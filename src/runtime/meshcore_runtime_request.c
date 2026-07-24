@@ -416,6 +416,7 @@ static void meshcore_runtime_request_execute_message_send_to_channel(
   uint8_t channel_hash[MESHCORE_CHANNEL_HASH_BYTES];
   uint8_t data[5U + MESHCORE_MAX_MESSAGE_TX_LEN + MESHCORE_NODE_NAME_MAX_LEN + 3U];
   uint32_t timestamp;
+  size_t payload_len;
   size_t prefix_len;
   size_t len;
 
@@ -444,14 +445,17 @@ static void meshcore_runtime_request_execute_message_send_to_channel(
 
   (void)snprintf(prefix, sizeof(prefix), "%s: ", node_identity.name);
   prefix_len = strnlen(prefix, sizeof(prefix));
-  if (prefix_len >= MESHCORE_MAX_MESSAGE_TX_LEN ||
-      request->payload_len + prefix_len > MESHCORE_MAX_MESSAGE_TX_LEN) {
+  if (prefix_len >= MESHCORE_MAX_MESSAGE_TX_LEN) {
     return;
+  }
+  payload_len = request->payload_len;
+  if (payload_len + prefix_len > MESHCORE_MAX_MESSAGE_TX_LEN) {
+    payload_len = MESHCORE_MAX_MESSAGE_TX_LEN - prefix_len;
   }
 
   memcpy(&data[5], prefix, prefix_len);
-  memcpy(&data[5U + prefix_len], request->payload, request->payload_len);
-  len = 5U + prefix_len + request->payload_len;
+  memcpy(&data[5U + prefix_len], request->payload, payload_len);
+  len = 5U + prefix_len + payload_len;
   packet = meshcore_mesh_create_group_datagram(&meshcore_runtime_context_get()->mesh,
                                                PAYLOAD_TYPE_GRP_TXT, &channel,
                                                data, len);

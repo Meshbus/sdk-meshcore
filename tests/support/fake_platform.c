@@ -61,6 +61,7 @@ static bool s_identity_get_fail;
 static bool s_timer_arm_fail;
 static bool s_radio_send_fail;
 static bool s_event_fail;
+static char s_node_name[MESHCORE_NODE_NAME_MAX_LEN];
 
 void meshcore_native_platform_reset(void)
 {
@@ -103,6 +104,7 @@ void meshcore_native_platform_reset(void)
   s_timer_arm_fail = false;
   s_radio_send_fail = false;
   s_event_fail = false;
+  memset(s_node_name, 0, sizeof(s_node_name));
   memset(s_last_radio_send, 0, sizeof(s_last_radio_send));
   memset(&s_last_message, 0, sizeof(s_last_message));
   memset(&s_last_advert, 0, sizeof(s_last_advert));
@@ -156,6 +158,14 @@ void meshcore_native_platform_peer_path_set(bool exists,
 void meshcore_native_platform_channel_secret_match_set(bool exists)
 {
   s_channel_secret_match = exists;
+}
+
+void meshcore_native_platform_node_name_set(const char *name)
+{
+  memset(s_node_name, 0, sizeof(s_node_name));
+  if (name != NULL) {
+    strncpy(s_node_name, name, sizeof(s_node_name) - 1U);
+  }
 }
 
 void meshcore_native_platform_time_set(unsigned long now_ms, uint32_t now_s)
@@ -553,6 +563,7 @@ int meshcore_platform_node_identity_get(meshcore_common_node_identity_t *out)
   for (i = 0U; i < sizeof(out->private_key); i++) {
     out->private_key[i] = (uint8_t)(0x80U + i);
   }
+  memcpy(out->name, s_node_name, sizeof(out->name));
   return 0;
 }
 

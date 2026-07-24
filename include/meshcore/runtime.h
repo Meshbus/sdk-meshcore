@@ -134,7 +134,9 @@ int meshcore_message_send_to_node(const uint8_t *public_key, bool flood,
  * @param secret Full channel secret.
  * @param secret_len Number of bytes in @p secret.
  * @param payload Message payload bytes.
- * @param payload_len Number of bytes in @p payload.
+ * @param payload_len Number of bytes in @p payload. To match upstream
+ * BaseChatMesh behavior, the transmitted tail is truncated when the sender
+ * name prefix and payload exceed @ref MESHCORE_MAX_MESSAGE_TX_LEN.
  * @return 0 on success, or a negative errno-style value.
  */
 int meshcore_message_send_to_channel(const uint8_t *secret, size_t secret_len,

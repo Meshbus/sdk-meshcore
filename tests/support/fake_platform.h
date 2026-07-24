@@ -23,6 +23,7 @@ void meshcore_native_platform_peer_path_set(bool exists,
                                             uint8_t out_path_len,
                                             uint8_t path_hash_size);
 void meshcore_native_platform_channel_secret_match_set(bool exists);
+void meshcore_native_platform_node_name_set(const char *name);
 void meshcore_native_platform_time_set(unsigned long now_ms, uint32_t now_s);
 unsigned int meshcore_native_platform_timer_arm_count_get(void);
 unsigned int meshcore_native_platform_timer_cancel_count_get(void);

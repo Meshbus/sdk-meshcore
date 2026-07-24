@@ -10,6 +10,7 @@
 
 #include "meshcore/runtime.h"
 #include "meshcore_packet.h"
+#include "meshcore_utils.h"
 
 /*
  * Layer 2 runtime oracle evidence:
@@ -585,16 +586,24 @@ static int test_runtime_peer_message_route_selection(void)
 static int test_runtime_channel_success_paths_publish_frames(void)
 {
   struct meshcore_packet packet;
+  uint8_t channel_key[MESHCORE_CHANNEL_SECRET_MAX_LEN] = {0};
+  uint8_t decrypted[5U + MESHCORE_MAX_MESSAGE_TX_LEN + 15U];
   const uint8_t *raw;
+  const char sender_prefix[] = "ABCDEF: ";
+  const size_t plaintext_len = 5U + MESHCORE_MAX_MESSAGE_TX_LEN;
+  const size_t padded_len = (plaintext_len + 15U) & ~(size_t)15U;
+  int decrypted_len;
   size_t raw_len;
   unsigned int before_count;
 
   NATIVE_TEST_ASSERT_EQ(0, init_runtime_for_api_test());
   meshcore_native_platform_channel_secret_match_set(true);
+  meshcore_native_platform_node_name_set("ABCDEF");
 
   before_count = meshcore_native_platform_radio_send_count_get();
   NATIVE_TEST_ASSERT_EQ(0, meshcore_message_send_to_channel(
-      s_secret, MESHCORE_CHANNEL_SECRET_LEN_16, s_payload, 1U));
+      s_secret, MESHCORE_CHANNEL_SECRET_LEN_16, s_payload,
+      MESHCORE_MAX_MESSAGE_TX_LEN));
   NATIVE_TEST_ASSERT_EQ(0, pump_until_radio_send(before_count));
   raw = meshcore_native_platform_last_radio_send_get();
   raw_len = meshcore_native_platform_last_radio_send_len_get();
@@ -604,6 +613,17 @@ static int test_runtime_channel_success_paths_publish_frames(void)
                         meshcore_packet_get_payload_type(&packet));
   NATIVE_TEST_ASSERT_EQ(ROUTE_TYPE_FLOOD,
                         meshcore_packet_get_route_type(&packet));
+  memcpy(channel_key, s_secret, MESHCORE_CHANNEL_SECRET_LEN_16);
+  decrypted_len = meshcore_utils_mac_then_decrypt(
+      channel_key, decrypted, &packet.payload[MESHCORE_CHANNEL_HASH_BYTES],
+      (int)(packet.payload_len - MESHCORE_CHANNEL_HASH_BYTES));
+  NATIVE_TEST_ASSERT_EQ(padded_len, (size_t)decrypted_len);
+  NATIVE_TEST_ASSERT_EQ(0U, decrypted[4]);
+  NATIVE_TEST_ASSERT(memcmp(&decrypted[5], sender_prefix,
+                            sizeof(sender_prefix) - 1U) == 0);
+  NATIVE_TEST_ASSERT(
+      memcmp(&decrypted[5U + sizeof(sender_prefix) - 1U], s_payload,
+             MESHCORE_MAX_MESSAGE_TX_LEN - (sizeof(sender_prefix) - 1U)) == 0);
   NATIVE_TEST_ASSERT_EQ(0, complete_last_tx());
 
   before_count = meshcore_native_platform_radio_send_count_get();
