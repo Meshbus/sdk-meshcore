@@ -5,6 +5,7 @@
 
 #include "meshcore_packet_manager.h"
 
+#include <errno.h>
 #include <string.h>
 
 static void meshcore_packet_queue_compact_from(struct meshcore_packet_queue *queue,
@@ -257,18 +258,21 @@ void meshcore_packet_queue_manager_free(
 	(void)meshcore_packet_queue_add(&manager->unused, packet, 0U, 0U);
 }
 
-void meshcore_packet_queue_manager_queue_outbound(
+int meshcore_packet_queue_manager_queue_outbound(
 	struct meshcore_packet_queue_manager *manager,
 	struct meshcore_packet *packet, uint8_t priority, uint32_t scheduled_for)
 {
 	if (manager == NULL || !manager->initialized || packet == NULL) {
-		return;
+		return -EINVAL;
 	}
 
 	if (!meshcore_packet_queue_add(&manager->send_queue, packet, priority,
 				       scheduled_for)) {
 		meshcore_packet_queue_manager_free(manager, packet);
+		return -ENOBUFS;
 	}
+
+	return 0;
 }
 
 struct meshcore_packet *meshcore_packet_queue_manager_get_next_outbound(

@@ -55,12 +55,14 @@ static meshcore_common_channel_data_event_t s_last_channel_data;
 static unsigned int s_request_error_count;
 static int s_last_request_error;
 static bool s_peer_path_exists;
+static int s_peer_path_error;
 static meshcore_common_peer_path_t s_peer_path;
 static bool s_channel_secret_match;
 static bool s_identity_get_fail;
 static bool s_timer_arm_fail;
 static bool s_radio_send_fail;
 static bool s_event_fail;
+static bool s_sha256_two_fragments_zero;
 static char s_node_name[MESHCORE_NODE_NAME_MAX_LEN];
 
 void meshcore_native_platform_reset(void)
@@ -96,14 +98,15 @@ void meshcore_native_platform_reset(void)
   s_request_error_count = 0U;
   s_last_request_error = 0;
   s_peer_path_exists = false;
+  s_peer_path_error = 0;
   memset(&s_peer_path, 0, sizeof(s_peer_path));
-  s_peer_path.out_path_len = MESHCORE_OUT_PATH_UNKNOWN;
   s_peer_path.path_hash_size = 1U;
   s_channel_secret_match = true;
   s_identity_get_fail = false;
   s_timer_arm_fail = false;
   s_radio_send_fail = false;
   s_event_fail = false;
+  s_sha256_two_fragments_zero = false;
   memset(s_node_name, 0, sizeof(s_node_name));
   memset(s_last_radio_send, 0, sizeof(s_last_radio_send));
   memset(&s_last_message, 0, sizeof(s_last_message));
@@ -117,6 +120,11 @@ void meshcore_native_platform_reset(void)
   memset(&s_last_peer_path_publish, 0, sizeof(s_last_peer_path_publish));
   memset(&s_last_node_discover, 0, sizeof(s_last_node_discover));
   memset(&s_last_channel_data, 0, sizeof(s_last_channel_data));
+}
+
+void meshcore_native_platform_peer_path_error_set(int err_code)
+{
+  s_peer_path_error = err_code;
 }
 
 void meshcore_native_platform_identity_get_fail_set(bool fail)
@@ -139,19 +147,25 @@ void meshcore_native_platform_event_fail_set(bool fail)
   s_event_fail = fail;
 }
 
+void meshcore_native_platform_sha256_two_fragments_zero_set(bool zero)
+{
+  s_sha256_two_fragments_zero = zero;
+}
+
 void meshcore_native_platform_peer_path_set(bool exists,
-                                            bool is_neighbor,
+                                            bool has_out_path,
                                             const uint8_t *out_path,
-                                            uint8_t out_path_len,
+                                            uint8_t out_path_byte_len,
                                             uint8_t path_hash_size)
 {
   s_peer_path_exists = exists;
   memset(&s_peer_path, 0, sizeof(s_peer_path));
-  s_peer_path.out_path_len = out_path_len;
-  s_peer_path.is_neighbor = is_neighbor;
+  s_peer_path.has_out_path = has_out_path;
+  s_peer_path.out_path_byte_len = out_path_byte_len;
   s_peer_path.path_hash_size = path_hash_size;
-  if (out_path != NULL && out_path_len <= sizeof(s_peer_path.out_path)) {
-    memcpy(s_peer_path.out_path, out_path, out_path_len);
+  if (out_path != NULL &&
+      out_path_byte_len <= sizeof(s_peer_path.out_path)) {
+    memcpy(s_peer_path.out_path, out_path, out_path_byte_len);
   }
 }
 
@@ -493,13 +507,17 @@ bool meshcore_platform_crypto_sha256_two_fragments(
     uint8_t *hash, size_t hash_len, const uint8_t *frag1, int frag1_len,
     const uint8_t *frag2, int frag2_len)
 {
-  uint8_t buf[128];
+  uint8_t buf[256];
   size_t len = 0U;
 
   if (hash == NULL || frag1_len < 0 || frag2_len < 0 ||
       (frag1 == NULL && frag1_len > 0) || (frag2 == NULL && frag2_len > 0) ||
       (size_t)frag1_len + (size_t)frag2_len > sizeof(buf)) {
     return false;
+  }
+  if (s_sha256_two_fragments_zero) {
+    memset(hash, 0, hash_len);
+    return true;
   }
   if (frag1_len > 0) {
     memcpy(&buf[len], frag1, (size_t)frag1_len);
@@ -608,9 +626,11 @@ int meshcore_platform_peer_path_get_by_key(
   if (out == NULL) {
     return -EINVAL;
   }
+  if (s_peer_path_error < 0) {
+    return s_peer_path_error;
+  }
   if (!s_peer_path_exists) {
     memset(out, 0, sizeof(*out));
-    out->out_path_len = MESHCORE_OUT_PATH_UNKNOWN;
     out->path_hash_size = 1U;
     return -ENOENT;
   }

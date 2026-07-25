@@ -65,11 +65,11 @@ crypto, identity, mesh, or dispatcher rules that belong in `src/core` or
 `src/support`.
 
 Peer direct/flood decisions follow upstream MeshCore contact semantics, not raw
-byte length alone. In host peer records, `out_path.size == 0` is direct
-zero-hop only when `is_neighbor == true`; `out_path.size == 0` with
-`is_neighbor == false` means the path is unknown and peer sends must fall back
-to flood. Companion contact `out_path_len == 0xff` is the unknown/flood
-sentinel; `out_path_len == 0` is zero-hop direct.
+byte length alone. The ABI 28 host record sets `has_out_path=true` for known
+routes; `out_path_byte_len == 0` then means direct zero-hop. A peer returned
+with `has_out_path=false` falls back to flood. Companion contact
+`out_path_len == 0xff` remains the wire/storage unknown sentinel and is
+separate from this host ABI shape.
 
 ### Layer 3: Platform Boundary
 

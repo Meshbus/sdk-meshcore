@@ -26,7 +26,7 @@
 
 static int test_public_constants_and_roles(void)
 {
-  NATIVE_TEST_ASSERT_EQ(27U, MESHCORE_ABI_VERSION);
+  NATIVE_TEST_ASSERT_EQ(28U, MESHCORE_ABI_VERSION);
   NATIVE_TEST_ASSERT_EQ(32U, MESHCORE_PUBLIC_KEY_SIZE);
   NATIVE_TEST_ASSERT_EQ(64U, MESHCORE_PRIVATE_KEY_SIZE);
   NATIVE_TEST_ASSERT_EQ(64U, MESHCORE_MAX_PATH_LEN);
@@ -73,7 +73,8 @@ static int test_public_view_and_config_shapes(void)
   NATIVE_TEST_ASSERT_EQ(MESHCORE_NODE_NAME_MAX_LEN, sizeof(peer.name));
   NATIVE_TEST_ASSERT_EQ(MESHCORE_PUBLIC_KEY_SIZE, sizeof(peer.public_key));
   NATIVE_TEST_ASSERT_EQ(MESHCORE_MAX_PATH_LEN, sizeof(peer_path.out_path));
-  NATIVE_TEST_ASSERT(!peer_path.is_neighbor);
+  NATIVE_TEST_ASSERT(!peer_path.has_out_path);
+  NATIVE_TEST_ASSERT_EQ(0U, peer_path.out_path_byte_len);
   NATIVE_TEST_ASSERT_EQ(MESHCORE_CHANNEL_SECRET_MAX_LEN,
                         sizeof(channel_secret.secret));
   NATIVE_TEST_ASSERT_EQ(MESHCORE_PUBLIC_KEY_SIZE, sizeof(identity.public_key));

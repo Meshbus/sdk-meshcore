@@ -198,6 +198,16 @@ struct meshcore_runtime_expected_ack {
   uint8_t attempt;
 };
 
+enum meshcore_runtime_ack_result {
+  MESHCORE_RUNTIME_ACK_UNMATCHED = 0,
+  MESHCORE_RUNTIME_ACK_MATCHED,
+};
+
+enum meshcore_runtime_correlation_result {
+  MESHCORE_RUNTIME_CORRELATION_UNMATCHED = 0,
+  MESHCORE_RUNTIME_CORRELATION_MATCHED,
+};
+
 struct meshcore_runtime_pending_discovery {
   bool valid;
   uint32_t tag;
@@ -247,7 +257,7 @@ struct meshcore_runtime {
 struct meshcore_runtime *meshcore_runtime_context_get(void);
 
 int meshcore_runtime_require_initialized(void);
-void meshcore_runtime_timer_sync(uint32_t now_ms);
+int meshcore_runtime_timer_sync(uint32_t now_ms);
 bool meshcore_runtime_time_reached(unsigned long now_ms,
                                    unsigned long expires_at_ms);
 bool meshcore_runtime_deadline_accumulate(uint32_t now_ms,
@@ -273,9 +283,9 @@ int meshcore_runtime_sync_local_identity(void);
 bool meshcore_runtime_local_identity_get(
     meshcore_common_node_identity_t *out);
 bool meshcore_runtime_local_role_is(meshcore_common_node_role_t role);
-bool meshcore_runtime_peer_path_get(const uint8_t *public_key,
-                                    meshcore_common_peer_path_t *out,
-                                    uint8_t *out_path_len);
+int meshcore_runtime_peer_path_get(const uint8_t *public_key,
+                                   meshcore_common_peer_path_t *out,
+                                   uint8_t *out_path_len);
 
 bool meshcore_runtime_protocol_allow_packet_forward(
     void *user_data, struct meshcore_mesh *mesh,
@@ -322,38 +332,44 @@ bool meshcore_runtime_handle_control_discover_request(
 void meshcore_runtime_correlation_cleanup(unsigned long now_ms);
 bool meshcore_runtime_correlation_next_deadline_get(uint32_t now_ms,
                                                     uint32_t *deadline_ms);
-void meshcore_runtime_expected_ack_register(uint32_t ack_crc,
-                                            const uint8_t *target,
-                                            uint8_t attempt);
-bool meshcore_runtime_expected_ack_handle(uint32_t ack_crc);
+int meshcore_runtime_expected_ack_reserve(uint32_t ack_crc,
+                                          const uint8_t *target,
+                                          uint8_t attempt,
+                                          size_t *slot_idx);
+void meshcore_runtime_expected_ack_rollback(size_t slot_idx);
+enum meshcore_runtime_ack_result
+meshcore_runtime_expected_ack_handle(uint32_t ack_crc);
 void meshcore_runtime_pending_discovery_clear(void);
 void meshcore_runtime_pending_trace_clear(void);
 void meshcore_runtime_pending_telemetry_clear(void);
 void meshcore_runtime_pending_binary_clear(void);
 void meshcore_runtime_pending_discovery_register(uint32_t tag,
-                                                 const uint8_t *key_prefix);
+                                                const uint8_t *key_prefix);
 void meshcore_runtime_pending_trace_register(uint32_t tag);
-void meshcore_runtime_pending_telemetry_register(uint32_t tag,
-                                                 const uint8_t *key_prefix,
-                                                 uint8_t permission_mask);
+void meshcore_runtime_pending_telemetry_register(
+    uint32_t tag, const uint8_t *key_prefix, uint8_t permission_mask);
 void meshcore_runtime_pending_binary_register(uint32_t tag,
-                                              const uint8_t *key_prefix);
-bool meshcore_runtime_pending_discovery_handle(
+                                             const uint8_t *key_prefix);
+enum meshcore_runtime_correlation_result
+meshcore_runtime_pending_discovery_handle(
     const uint8_t *key_prefix, struct meshcore_packet *packet, uint8_t *path,
     uint8_t path_len_field, uint8_t extra_type, uint8_t *extra,
     uint8_t extra_len);
-bool meshcore_runtime_pending_trace_handle(uint32_t tag, uint8_t flags,
-                                           const uint8_t *path_snrs,
-                                           uint8_t path_snr_count,
-                                           uint8_t path_hash_bytes,
-                                           int8_t response_snr);
-bool meshcore_runtime_pending_telemetry_handle(const uint8_t *key_prefix,
-                                               uint32_t timestamp,
-                                               const uint8_t *payload,
-                                               size_t payload_len);
-bool meshcore_runtime_pending_binary_handle(const uint8_t *key_prefix,
-                                            uint32_t timestamp,
-                                            const uint8_t *payload,
-                                            size_t payload_len);
+enum meshcore_runtime_correlation_result
+meshcore_runtime_pending_trace_handle(uint32_t tag, uint8_t flags,
+                                      const uint8_t *path_snrs,
+                                      uint8_t path_snr_count,
+                                      uint8_t path_hash_bytes,
+                                      int8_t response_snr);
+enum meshcore_runtime_correlation_result
+meshcore_runtime_pending_telemetry_handle(const uint8_t *key_prefix,
+                                          uint32_t timestamp,
+                                          const uint8_t *payload,
+                                          size_t payload_len);
+enum meshcore_runtime_correlation_result
+meshcore_runtime_pending_binary_handle(const uint8_t *key_prefix,
+                                       uint32_t timestamp,
+                                       const uint8_t *payload,
+                                       size_t payload_len);
 
 #endif /* MESHCORE_RUNTIME_INTERNAL_H_ */

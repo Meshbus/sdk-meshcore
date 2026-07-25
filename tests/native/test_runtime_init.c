@@ -6,6 +6,7 @@
 #include "native_test.h"
 #include "fake_platform.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "meshcore/runtime.h"
@@ -93,9 +94,22 @@ int main(void)
   NATIVE_TEST_ASSERT(meshcore_init() < 0);
 
   meshcore_native_platform_reset();
+  meshcore_native_platform_timer_arm_fail_set(true);
+  NATIVE_TEST_ASSERT_EQ(-EIO, meshcore_init());
+  NATIVE_TEST_ASSERT_EQ(-ENODEV, meshcore_node_advert_request(false));
+
+  meshcore_native_platform_reset();
   NATIVE_TEST_ASSERT_EQ(0, meshcore_init());
   NATIVE_TEST_ASSERT(meshcore_native_platform_timer_arm_count_get() > 0U);
   NATIVE_TEST_ASSERT(meshcore_native_platform_last_timer_deadline_get() > 0U);
+
+  meshcore_native_platform_timer_arm_fail_set(true);
+  NATIVE_TEST_ASSERT_EQ(0, meshcore_node_advert_request(false));
+  NATIVE_TEST_ASSERT_EQ(1U,
+                        meshcore_native_platform_request_error_count_get());
+  NATIVE_TEST_ASSERT_EQ(-EIO,
+                        meshcore_native_platform_last_request_error_get());
+  meshcore_native_platform_timer_arm_fail_set(false);
 
   NATIVE_TEST_ASSERT_EQ(0, test_binary_response_rejects_oversized_flood_return());
 

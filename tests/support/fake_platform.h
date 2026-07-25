@@ -17,11 +17,13 @@ void meshcore_native_platform_identity_get_fail_set(bool fail);
 void meshcore_native_platform_timer_arm_fail_set(bool fail);
 void meshcore_native_platform_radio_send_fail_set(bool fail);
 void meshcore_native_platform_event_fail_set(bool fail);
+void meshcore_native_platform_sha256_two_fragments_zero_set(bool zero);
 void meshcore_native_platform_peer_path_set(bool exists,
-                                            bool is_neighbor,
+                                            bool has_out_path,
                                             const uint8_t *out_path,
-                                            uint8_t out_path_len,
+                                            uint8_t out_path_byte_len,
                                             uint8_t path_hash_size);
+void meshcore_native_platform_peer_path_error_set(int err_code);
 void meshcore_native_platform_channel_secret_match_set(bool exists);
 void meshcore_native_platform_node_name_set(const char *name);
 void meshcore_native_platform_time_set(unsigned long now_ms, uint32_t now_s);

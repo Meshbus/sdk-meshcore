@@ -18,8 +18,10 @@ jobs:
         run: |
           mkdir -p .reference
           git clone https://github.com/meshcore-dev/MeshCore .reference/meshcore
-          git -C .reference/meshcore fetch origin e8d3c53ba1ea863937081cd0caad759b832f3028
-          git -C .reference/meshcore checkout --detach e8d3c53ba1ea863937081cd0caad759b832f3028
+          commit="$(sed -n 's/^commit=//p' upstream.lock)"
+          test -n "${commit}"
+          git -C .reference/meshcore fetch origin "${commit}"
+          git -C .reference/meshcore checkout --detach "${commit}"
       - name: Strict upstream lock
         run: python3 tools/upstream_lock_check.py --repo-root .
       - name: Sync and boundary report

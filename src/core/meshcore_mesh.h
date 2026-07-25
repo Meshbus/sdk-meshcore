@@ -146,21 +146,21 @@ struct meshcore_packet *meshcore_mesh_create_control_data(
  * reuse it again. On success the packet is queued into the dispatcher; on
  * invalid send arguments the mesh layer releases the packet immediately.
  */
-void meshcore_mesh_send_flood(struct meshcore_mesh *mesh,
-                              struct meshcore_packet *packet,
-                              uint32_t delay_millis, uint8_t path_hash_size);
-void meshcore_mesh_send_flood_by_transport_codes(
+int meshcore_mesh_send_flood(struct meshcore_mesh *mesh,
+                             struct meshcore_packet *packet,
+                             uint32_t delay_millis, uint8_t path_hash_size);
+int meshcore_mesh_send_flood_by_transport_codes(
     struct meshcore_mesh *mesh, struct meshcore_packet *packet,
     const uint16_t transport_codes[2], uint32_t delay_millis,
     uint8_t path_hash_size);
-void meshcore_mesh_send_direct(struct meshcore_mesh *mesh,
-                               struct meshcore_packet *packet,
-                               const uint8_t *path, uint8_t path_len,
-                               uint32_t delay_millis);
-void meshcore_mesh_send_zero_hop(struct meshcore_mesh *mesh,
-                                 struct meshcore_packet *packet,
-                                 uint32_t delay_millis);
-void meshcore_mesh_send_zero_hop_by_transport_codes(
+int meshcore_mesh_send_direct(struct meshcore_mesh *mesh,
+                              struct meshcore_packet *packet,
+                              const uint8_t *path, uint8_t path_len,
+                              uint32_t delay_millis);
+int meshcore_mesh_send_zero_hop(struct meshcore_mesh *mesh,
+                                struct meshcore_packet *packet,
+                                uint32_t delay_millis);
+int meshcore_mesh_send_zero_hop_by_transport_codes(
     struct meshcore_mesh *mesh, struct meshcore_packet *packet,
     const uint16_t transport_codes[2], uint32_t delay_millis);
 

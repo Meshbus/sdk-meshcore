@@ -237,7 +237,7 @@ void meshcore_runtime_binary_request_publish(
   meshcore_common_binary_request_event_t event = {0};
 
   if (peer == NULL || packet == NULL || payload == NULL ||
-      payload_len == 0U || payload_len > sizeof(event.payload) || tag == 0U) {
+      payload_len == 0U || payload_len > sizeof(event.payload)) {
     return;
   }
 

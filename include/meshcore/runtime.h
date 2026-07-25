@@ -43,6 +43,17 @@ extern "C" {
  * Host implementation hooks are declared by @ref meshcore_platform. The runtime
  * binds directly to those link-time hooks.
  *
+ * Synchronous request calls return 0 only after the outbound queue owns the
+ * packet. Common failures are `-EINVAL` for invalid arguments, `-ENODEV`
+ * before initialization and `-ENOBUFS` when packet, outbound-queue, or
+ * expected-ACK capacity is exhausted. Other negative platform-hook results
+ * propagate unchanged.
+ *
+ * A timer-arm failure during initialization fails @ref meshcore_init and rolls
+ * the runtime back. A timer-arm failure after a packet is successfully queued
+ * is reported through @ref meshcore_platform_runtime_request_error while the
+ * request call still returns 0.
+ *
  * @{
  */
 
@@ -164,10 +175,10 @@ int meshcore_channel_data_send(const uint8_t *secret, size_t secret_len,
  * @brief Request path discovery for a peer.
  *
  * @param public_key Full peer public key.
- * @param request_tag Optional request correlation tag storage. Pass NULL or
- * a pointer to zero to let the runtime generate a tag. A non-zero pointed
- * value is used as the request tag. On success, the actual request tag is
- * written back to this pointer when provided.
+ * @param request_tag Optional request correlation tag storage. Pass NULL or a
+ * pointer to zero to let the runtime generate a tag. A non-zero pointed value
+ * is used as the request tag. On success, the actual request tag is written
+ * back to this pointer when provided.
  * @return 0 on success, or a negative errno-style value.
  */
 int meshcore_node_discover_path_request(const uint8_t *public_key,
@@ -181,10 +192,10 @@ int meshcore_node_discover_path_request(const uint8_t *public_key,
  * @param path_hash_size Number of hash bytes per hop in @p path. Values 1..3
  * are accepted; 3-byte paths are encoded as 2-byte TRACE routes to match the
  * upstream TRACE wire format.
- * @param request_tag Optional request correlation tag storage. Pass NULL or
- * a pointer to zero to let the runtime generate a tag. A non-zero pointed
- * value is used as the request tag. On success, the actual request tag is
- * written back to this pointer when provided.
+ * @param request_tag Optional request correlation tag storage. Pass NULL or a
+ * pointer to zero to let the runtime generate a tag. A non-zero pointed value
+ * is used as the request tag. On success, the actual request tag is written
+ * back to this pointer when provided.
  * @return 0 on success, or a negative errno-style value.
  */
 int meshcore_node_trace_request(const uint8_t *path, uint8_t path_len,
@@ -208,10 +219,10 @@ int meshcore_node_trace_path_request(const uint8_t *public_key,
  * @param public_key Full peer public key.
  * @param permission_mask MeshCore telemetry permission bits. Wire encoding
  * uses the upstream inverse-mask request byte, @c ~permission_mask.
- * @param request_tag Optional request correlation tag storage. Pass NULL or
- * a pointer to zero to let the runtime generate a tag. A non-zero pointed
- * value is used as the request tag. On success, the actual request tag is
- * written back to this pointer when provided.
+ * @param request_tag Optional request correlation tag storage. Pass NULL or a
+ * pointer to zero to let the runtime generate a tag. A non-zero pointed value
+ * is used as the request tag. On success, the actual request tag is written
+ * back to this pointer when provided.
  * @return 0 on success, or a negative errno-style value.
  */
 int meshcore_node_telemetry_request(const uint8_t *public_key,
@@ -233,12 +244,13 @@ int meshcore_node_binary_request(const uint8_t *public_key,
                                  size_t payload_len);
 
 /**
- * @brief Request remote binary data with a caller-provided correlation tag.
+ * @brief Request remote binary data with an optional correlation tag.
  *
  * @param public_key Full peer public key.
  * @param payload Request payload bytes.
  * @param payload_len Number of bytes in @p payload.
- * @param tag Caller-provided correlation tag.
+ * @param tag Caller-provided correlation tag. Zero generates a tag, matching
+ * the reference request path.
  * @return 0 on success, or a negative errno-style value.
  */
 int meshcore_node_binary_request_with_tag(const uint8_t *public_key,

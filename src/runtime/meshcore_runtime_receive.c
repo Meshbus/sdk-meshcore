@@ -5,6 +5,7 @@
 
 #include "meshcore_runtime_internal.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "meshcore_platform_bridge.h"
@@ -77,12 +78,19 @@ static void meshcore_runtime_send_ack_direct(
   uint8_t extra_acks;
   struct meshcore_packet *packet;
   uint32_t delay_ms = MESHCORE_RUNTIME_TXT_ACK_DELAY_MS;
+  int rc;
 
   if (peer == NULL || ack == NULL || ack_len == 0U) {
     return;
   }
 
-  if (!meshcore_runtime_peer_path_get(peer->public_key, &peer_path, &path_len)) {
+  rc = meshcore_runtime_peer_path_get(peer->public_key, &peer_path, &path_len);
+  if (rc != 0) {
+    if (rc != -ENOENT) {
+      meshcore_platform_bridge_request_error(
+          MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_NODE, rc);
+      return;
+    }
     packet = meshcore_mesh_create_ack_data(&meshcore_runtime_context_get()->mesh,
                                            ack, ack_len);
     if (packet != NULL) {
@@ -250,6 +258,7 @@ static void meshcore_runtime_handle_telemetry_request(
   uint8_t response[MESHCORE_MAX_TELEMETRY_PAYLOAD_LEN + sizeof(tag)];
   uint8_t direct_path_len = 0U;
   size_t response_len;
+  int rc;
 
   if (peer == NULL || secret == NULL || packet == NULL) {
     return;
@@ -288,14 +297,21 @@ static void meshcore_runtime_handle_telemetry_request(
     return;
   }
 
-  if (meshcore_runtime_peer_path_get(peer->public_key, &peer_path, &direct_path_len)) {
+  rc = meshcore_runtime_peer_path_get(peer->public_key, &peer_path,
+                                      &direct_path_len);
+  if (rc == 0) {
     meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, reply, peer_path.out_path,
                               direct_path_len,
                               MESHCORE_RUNTIME_SERVER_RESPONSE_DELAY_MS);
-  } else {
+  } else if (rc == -ENOENT) {
     meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, reply,
                              MESHCORE_RUNTIME_SERVER_RESPONSE_DELAY_MS,
                              meshcore_runtime_local_path_hash_size_get());
+  } else {
+    meshcore_dispatcher_release_packet(
+        &meshcore_runtime_context_get()->mesh.dispatcher, reply);
+    meshcore_platform_bridge_request_error(
+        MESHCORE_RUNTIME_REQUEST_NODE_TELEMETRY, rc);
   }
 }
 
@@ -370,11 +386,12 @@ static void meshcore_runtime_on_peer_data_recv_internal(
                                               len - sizeof(uint32_t));
     }
   } else if (type == PAYLOAD_TYPE_RESPONSE && len >= sizeof(uint32_t)) {
+    enum meshcore_runtime_correlation_result result;
     uint32_t response_timestamp = meshcore_runtime_timestamp_now_seconds();
 
-    if (!meshcore_runtime_pending_telemetry_handle(sender->public_key,
-                                                   response_timestamp, data,
-                                                   len)) {
+    result = meshcore_runtime_pending_telemetry_handle(
+        sender->public_key, response_timestamp, data, len);
+    if (result == MESHCORE_RUNTIME_CORRELATION_UNMATCHED) {
       (void)meshcore_runtime_pending_binary_handle(sender->public_key,
                                                    response_timestamp, data,
                                                    len);
@@ -391,7 +408,10 @@ void meshcore_runtime_on_ack_recv(struct meshcore_packet *packet,
     return;
   }
 
-  (void)meshcore_runtime_expected_ack_handle(ack_crc);
+  if (meshcore_runtime_expected_ack_handle(ack_crc) ==
+      MESHCORE_RUNTIME_ACK_MATCHED) {
+    meshcore_packet_mark_do_not_retransmit(packet);
+  }
 }
 
 void meshcore_runtime_on_peer_data_recv(struct meshcore_packet *packet,
@@ -426,9 +446,9 @@ bool meshcore_runtime_on_peer_path_recv(struct meshcore_packet *packet,
     return false;
   }
 
-  if (meshcore_runtime_pending_discovery_handle(sender->public_key, packet, path,
-                                                path_len, extra_type, extra,
-                                                extra_len)) {
+  if (meshcore_runtime_pending_discovery_handle(
+          sender->public_key, packet, path, path_len, extra_type, extra,
+          extra_len) != MESHCORE_RUNTIME_CORRELATION_UNMATCHED) {
     return true;
   }
 
@@ -440,11 +460,12 @@ bool meshcore_runtime_on_peer_path_recv(struct meshcore_packet *packet,
   } else if (meshcore_runtime_local_role_is(MESHCORE_COMMON_NODE_ROLE_CHAT) &&
              extra_type == PAYLOAD_TYPE_RESPONSE && extra != NULL &&
              extra_len >= sizeof(uint32_t)) {
+    enum meshcore_runtime_correlation_result result;
     uint32_t response_timestamp = meshcore_runtime_timestamp_now_seconds();
 
-    if (!meshcore_runtime_pending_telemetry_handle(sender->public_key,
-                                                   response_timestamp, extra,
-                                                   extra_len)) {
+    result = meshcore_runtime_pending_telemetry_handle(
+        sender->public_key, response_timestamp, extra, extra_len);
+    if (result == MESHCORE_RUNTIME_CORRELATION_UNMATCHED) {
       (void)meshcore_runtime_pending_binary_handle(sender->public_key,
                                                    response_timestamp, extra,
                                                    extra_len);

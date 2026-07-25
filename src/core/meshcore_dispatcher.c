@@ -265,7 +265,7 @@ static void meshcore_dispatcher_process_recv_packet(
   } else {
     priority = (uint8_t)((action >> 24) - 1U);
     delay = action & 0x00FFFFFFU;
-    meshcore_packet_queue_manager_queue_outbound(
+    (void)meshcore_packet_queue_manager_queue_outbound(
         dispatcher->packet_manager, packet, priority,
         (uint32_t)meshcore_dispatcher_future_millis(dispatcher, (int)delay));
   }
@@ -612,23 +612,23 @@ void meshcore_dispatcher_release_packet(struct meshcore_dispatcher *dispatcher,
   meshcore_packet_queue_manager_free(dispatcher->packet_manager, packet);
 }
 
-void meshcore_dispatcher_send_packet(struct meshcore_dispatcher *dispatcher,
-                                     struct meshcore_packet *packet,
-                                     uint8_t priority,
-                                     uint32_t delay_millis)
+int meshcore_dispatcher_send_packet(struct meshcore_dispatcher *dispatcher,
+                                    struct meshcore_packet *packet,
+                                    uint8_t priority,
+                                    uint32_t delay_millis)
 {
   if (dispatcher == NULL || dispatcher->packet_manager == NULL ||
       packet == NULL) {
-    return;
+    return -EINVAL;
   }
 
   if (!meshcore_packet_is_valid_path_len((uint8_t)packet->path_len) ||
       packet->payload_len > MESHCORE_PACKET_PAYLOAD_MAX_LEN) {
     meshcore_packet_queue_manager_free(dispatcher->packet_manager, packet);
-    return;
+    return -EINVAL;
   }
 
-  meshcore_packet_queue_manager_queue_outbound(
+  return meshcore_packet_queue_manager_queue_outbound(
       dispatcher->packet_manager, packet, priority,
       (uint32_t)meshcore_dispatcher_future_millis(dispatcher,
                                                   (int)delay_millis));

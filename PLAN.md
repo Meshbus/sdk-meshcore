@@ -236,8 +236,8 @@ Oracle input model:
 - local node identity and role;
 - local advert profile;
 - runtime policy;
-- peer records with public key, role, `is_neighbor`, `out_path_len`, `out_path`,
-  last seen SNR, and shared secret;
+- peer records with public key, role, `has_out_path`, `out_path_byte_len`,
+  `out_path`, last seen SNR, and shared secret;
 - channel records with hash and secret;
 - monotonic time and RTC;
 - deterministic RNG stream;
@@ -281,10 +281,9 @@ Required runtime oracle scenarios:
 
 Important contact/path invariant:
 
-- `out_path_len == 0` is direct zero-hop only when the host peer record is a
-  neighbor.
-- `out_path_len == 0` with `is_neighbor == false` means the path is unknown and
-  peer sends must fall back to flood.
+- `has_out_path == true` with `out_path_byte_len == 0` is direct zero-hop.
+- `has_out_path == false` means the path is unknown and peer sends must fall
+  back to flood.
 - Companion unknown/flood sentinel is `MESHCORE_OUT_PATH_UNKNOWN` (`0xff`).
 
 ### Parity Level 3: Differential Upstream Harness
@@ -378,7 +377,7 @@ Required runtime API coverage:
 | `meshcore_node_trace_path_request` | null key, no path, known path, null tag, caller tag, expected trace frame. |
 | `meshcore_node_telemetry_request` | null key, permission masks 0/all/base/location/environment, tag generation, payload encoding. |
 | `meshcore_node_binary_request` | null key, null payload, payload len 0/max/max+1, generated tag. |
-| `meshcore_node_binary_request_with_tag` | all binary request tests plus caller tag, duplicate tag behavior. |
+| `meshcore_node_binary_request_with_tag` | all binary request tests plus zero tag generation, caller tag, duplicate tag behavior. |
 | `meshcore_node_anon_data_send` | null key, null payload, payload len 0/max/max+1, expected anonymous datagram. |
 | `meshcore_node_binary_response` | null request, null payload, direct response max, flood response reduced max, return path bounds. |
 | `meshcore_node_discover_request` | filter none/all/role-specific, prefix/full key, since 0/nonzero, tag generation. |
@@ -494,8 +493,8 @@ Required setup:
 ```sh
 mkdir -p .reference
 git clone https://github.com/meshcore-dev/MeshCore .reference/meshcore
-git -C .reference/meshcore fetch origin e8d3c53ba1ea863937081cd0caad759b832f3028
-git -C .reference/meshcore checkout --detach e8d3c53ba1ea863937081cd0caad759b832f3028
+git -C .reference/meshcore fetch origin a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
+git -C .reference/meshcore checkout --detach a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
 ```
 
 Required checks:
@@ -669,7 +668,7 @@ Observed result:
   parity/oracle/contract tests;
 - sync report passed: 12 pass, 0 warn, 0 fail;
 - upstream lock check passed for `.reference/meshcore` at
-  `e8d3c53ba1ea`;
+  `a3a1aa5e3be`;
 - strict warning build with AppleClang and
   `-Wall -Wextra -Werror -Wpedantic` passed: 13 tests passed;
 - ASan/UBSan smoke build with AppleClang passed: 13 tests passed;

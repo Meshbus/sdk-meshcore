@@ -147,23 +147,26 @@ bool meshcore_runtime_deadline_accumulate(uint32_t now_ms,
   return false;
 }
 
-void meshcore_runtime_timer_sync(uint32_t now_ms) {
+int meshcore_runtime_timer_sync(uint32_t now_ms) {
   bool has_deadline = false;
   uint32_t next_deadline_ms = 0U;
+  int rc;
 
   if (!meshcore_runtime_context_get()->initialized) {
-    return;
+    return -ENODEV;
   }
 
-  if (meshcore_runtime_next_deadline_get(now_ms, &has_deadline,
-                                         &next_deadline_ms) != 0) {
-    return;
+  rc = meshcore_runtime_next_deadline_get(now_ms, &has_deadline,
+                                          &next_deadline_ms);
+  if (rc != 0) {
+    return rc;
   }
 
   if (has_deadline) {
-    (void)meshcore_platform_timer_arm(next_deadline_ms);
+    return meshcore_platform_timer_arm(next_deadline_ms);
   } else {
     meshcore_platform_timer_cancel();
+    return 0;
   }
 }
 
@@ -328,28 +331,35 @@ bool meshcore_runtime_local_role_is(meshcore_common_node_role_t role) {
   return meshcore_runtime_local_identity_get(&identity) && identity.role == role;
 }
 
-bool meshcore_runtime_peer_path_get(const uint8_t *public_key,
-                                    meshcore_common_peer_path_t *out,
-                                    uint8_t *out_path_len) {
+int meshcore_runtime_peer_path_get(const uint8_t *public_key,
+                                   meshcore_common_peer_path_t *out,
+                                   uint8_t *out_path_len) {
   uint8_t path_len;
+  int rc;
 
-  if (public_key == NULL || out == NULL || out_path_len == NULL ||
-      meshcore_platform_bridge_peer_path_get_by_key(public_key, out) != 0) {
-    return false;
+  if (public_key == NULL || out == NULL || out_path_len == NULL) {
+    return -EINVAL;
   }
 
-  if (out->out_path_len == 0U && !out->is_neighbor) {
-    return false;
+  rc = meshcore_platform_bridge_peer_path_get_by_key(public_key, out);
+  if (rc != 0) {
+    return rc;
+  }
+  if (!out->has_out_path) {
+    return -ENOENT;
+  }
+  if (out->out_path_byte_len > sizeof(out->out_path)) {
+    return -EINVAL;
   }
 
   if (!meshcore_runtime_path_len_encode(
           meshcore_runtime_normalize_path_hash_size(out->path_hash_size),
-          out->out_path_len, &path_len)) {
-    return false;
+          out->out_path_byte_len, &path_len)) {
+    return -EINVAL;
   }
 
   *out_path_len = path_len;
-  return true;
+  return 0;
 }
 
 static void meshcore_runtime_state_reset(void) {
@@ -391,8 +401,8 @@ static int meshcore_runtime_begin(void) {
     return rc;
   }
   meshcore_runtime_context_get()->initialized = true;
-  meshcore_runtime_timer_sync((uint32_t)meshcore_clock_millis_get());
-  return 0;
+  return meshcore_runtime_timer_sync(
+      (uint32_t)meshcore_clock_millis_get());
 }
 
 static void meshcore_runtime_end(void) {
@@ -423,6 +433,8 @@ void meshcore_deinit(void) {
 }
 
 int meshcore_timer_fired(uint32_t now_ms) {
+  int rc;
+
   if (!meshcore_runtime_context_get()->initialized) {
     return -ENODEV;
   }
@@ -432,8 +444,8 @@ int meshcore_timer_fired(uint32_t now_ms) {
   meshcore_mesh_loop(&meshcore_runtime_context_get()->mesh);
   meshcore_clock_millis_override_clear();
   meshcore_runtime_context_get()->last_now_ms = now_ms;
-  meshcore_runtime_timer_sync(now_ms);
-  return 0;
+  rc = meshcore_runtime_timer_sync(now_ms);
+  return rc;
 }
 
 int meshcore_radio_rx_inject(const uint8_t *data, size_t len,
@@ -458,12 +470,17 @@ int meshcore_radio_rx_inject(const uint8_t *data, size_t len,
   }
   meshcore_clock_millis_override_clear();
   meshcore_runtime_context_get()->last_now_ms = now_ms;
-  meshcore_runtime_timer_sync(now_ms);
+  if (rc == 0) {
+    rc = meshcore_runtime_timer_sync(now_ms);
+  } else {
+    (void)meshcore_runtime_timer_sync(now_ms);
+  }
   return rc;
 }
 
 int meshcore_radio_tx_done(uint32_t now_ms, bool success) {
   bool handled;
+  int rc;
 
   if (!meshcore_runtime_context_get()->initialized) {
     return -ENODEV;
@@ -475,8 +492,13 @@ int meshcore_radio_tx_done(uint32_t now_ms, bool success) {
   meshcore_mesh_loop(&meshcore_runtime_context_get()->mesh);
   meshcore_clock_millis_override_clear();
   meshcore_runtime_context_get()->last_now_ms = now_ms;
-  meshcore_runtime_timer_sync(now_ms);
-  return handled ? 0 : -EALREADY;
+  rc = handled ? 0 : -EALREADY;
+  if (rc == 0) {
+    rc = meshcore_runtime_timer_sync(now_ms);
+  } else {
+    (void)meshcore_runtime_timer_sync(now_ms);
+  }
+  return rc;
 }
 
 static int meshcore_runtime_next_deadline_get(uint32_t now_ms,

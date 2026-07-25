@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-project(meshcore VERSION 0.1.0 LANGUAGES C)
+project(meshcore VERSION 0.2.0 LANGUAGES C)
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(MESHCORE_IS_TOP_LEVEL ON)
@@ -78,7 +78,7 @@ if(MESHCORE_INSTALL)
   write_basic_package_version_file(
     ${CMAKE_CURRENT_BINARY_DIR}/meshcore-config-version.cmake
     VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
+    COMPATIBILITY SameMinorVersion
   )
 
   install(FILES

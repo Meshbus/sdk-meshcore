@@ -5,6 +5,7 @@
 
 #include "meshcore_runtime_internal.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "meshcore_platform_bridge.h"
@@ -145,15 +146,15 @@ bool meshcore_runtime_correlation_next_deadline_get(
   return true;
 }
 
-void meshcore_runtime_expected_ack_register(uint32_t ack_crc,
-                                                   const uint8_t *target,
-                                                   uint8_t attempt) {
-  size_t slot_idx = meshcore_runtime_context_get()->expected_ack_next;
+int meshcore_runtime_expected_ack_reserve(uint32_t ack_crc,
+                                          const uint8_t *target,
+                                          uint8_t attempt,
+                                          size_t *slot_idx) {
   unsigned long now_ms = meshcore_clock_millis_get();
   size_t i;
 
-  if (ack_crc == 0U || target == NULL) {
-    return;
+  if (ack_crc == 0U || target == NULL || slot_idx == NULL) {
+    return -EINVAL;
   }
 
   for (i = 0U; i < MESHCORE_RUNTIME_EXPECTED_ACK_TABLE_SIZE; i++) {
@@ -165,27 +166,40 @@ void meshcore_runtime_expected_ack_register(uint32_t ack_crc,
 
     if (!entry->valid ||
         meshcore_runtime_time_reached(now_ms, entry->expires_at_ms)) {
-      slot_idx = idx;
+      *slot_idx = idx;
       break;
     }
   }
+  if (i == MESHCORE_RUNTIME_EXPECTED_ACK_TABLE_SIZE) {
+    return -ENOBUFS;
+  }
 
-  memset(&meshcore_runtime_context_get()->expected_acks[slot_idx], 0,
-         sizeof(meshcore_runtime_context_get()->expected_acks[slot_idx]));
-  meshcore_runtime_context_get()->expected_acks[slot_idx].valid = true;
-  meshcore_runtime_context_get()->expected_acks[slot_idx].msg_sent_ms = now_ms;
-  meshcore_runtime_context_get()->expected_acks[slot_idx].expires_at_ms =
+  memset(&meshcore_runtime_context_get()->expected_acks[*slot_idx], 0,
+         sizeof(meshcore_runtime_context_get()->expected_acks[*slot_idx]));
+  meshcore_runtime_context_get()->expected_acks[*slot_idx].valid = true;
+  meshcore_runtime_context_get()->expected_acks[*slot_idx].msg_sent_ms = now_ms;
+  meshcore_runtime_context_get()->expected_acks[*slot_idx].expires_at_ms =
       now_ms + MESHCORE_RUNTIME_REQUEST_TIMEOUT_MS;
-  meshcore_runtime_context_get()->expected_acks[slot_idx].ack_crc = ack_crc;
-  memcpy(meshcore_runtime_context_get()->expected_acks[slot_idx].target, target,
-         sizeof(meshcore_runtime_context_get()->expected_acks[slot_idx].target));
-  meshcore_runtime_context_get()->expected_acks[slot_idx].attempt = attempt;
+  meshcore_runtime_context_get()->expected_acks[*slot_idx].ack_crc = ack_crc;
+  memcpy(meshcore_runtime_context_get()->expected_acks[*slot_idx].target, target,
+         sizeof(meshcore_runtime_context_get()->expected_acks[*slot_idx].target));
+  meshcore_runtime_context_get()->expected_acks[*slot_idx].attempt = attempt;
   meshcore_runtime_context_get()->expected_ack_next =
-      (slot_idx + 1U) % MESHCORE_RUNTIME_EXPECTED_ACK_TABLE_SIZE;
+      (*slot_idx + 1U) % MESHCORE_RUNTIME_EXPECTED_ACK_TABLE_SIZE;
+  return 0;
 }
 
-bool meshcore_runtime_expected_ack_handle(uint32_t ack_crc) {
+void meshcore_runtime_expected_ack_rollback(size_t slot_idx) {
+  if (slot_idx < MESHCORE_RUNTIME_EXPECTED_ACK_TABLE_SIZE) {
+    meshcore_runtime_expected_ack_clear(
+        &meshcore_runtime_context_get()->expected_acks[slot_idx]);
+  }
+}
+
+enum meshcore_runtime_ack_result
+meshcore_runtime_expected_ack_handle(uint32_t ack_crc) {
   unsigned long now_ms = meshcore_clock_millis_get();
+  int rc;
   size_t i;
 
   for (i = 0U; i < MESHCORE_RUNTIME_EXPECTED_ACK_TABLE_SIZE; i++) {
@@ -203,16 +217,21 @@ bool meshcore_runtime_expected_ack_handle(uint32_t ack_crc) {
       continue;
     }
 
-    (void)meshcore_platform_bridge_message_ack_handler(entry->target, entry->attempt);
+    rc = meshcore_platform_bridge_message_ack_handler(entry->target,
+                                                      entry->attempt);
+    if (rc < 0) {
+      meshcore_platform_bridge_request_error(
+          MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_NODE, rc);
+    }
     meshcore_runtime_expected_ack_clear(entry);
-    return true;
+    return MESHCORE_RUNTIME_ACK_MATCHED;
   }
 
-  return false;
+  return MESHCORE_RUNTIME_ACK_UNMATCHED;
 }
 
 void meshcore_runtime_pending_discovery_register(uint32_t tag,
-                                                        const uint8_t *key_prefix) {
+                                                 const uint8_t *key_prefix) {
   if (key_prefix == NULL) {
     return;
   }
@@ -265,11 +284,13 @@ void meshcore_runtime_pending_binary_register(uint32_t tag,
          sizeof(meshcore_runtime_context_get()->pending_binary.key_prefix));
 }
 
-bool meshcore_runtime_pending_discovery_handle(
+enum meshcore_runtime_correlation_result
+meshcore_runtime_pending_discovery_handle(
     const uint8_t *key_prefix, struct meshcore_packet *packet, uint8_t *path,
     uint8_t path_len_field, uint8_t extra_type, uint8_t *extra,
     uint8_t extra_len) {
   meshcore_common_peer_path_event_t event = {0};
+  int rc;
   uint8_t out_path_len;
   uint8_t path_hash_size;
   uint32_t tag = 0U;
@@ -280,17 +301,17 @@ bool meshcore_runtime_pending_discovery_handle(
              sizeof(meshcore_runtime_context_get()->pending_discovery.key_prefix)) != 0 ||
       !meshcore_runtime_path_len_decode(path_len_field, &out_path_len,
                                         &path_hash_size)) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
   if (out_path_len > 0U && path == NULL) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
   if (extra == NULL || extra_len < sizeof(tag)) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
   memcpy(&tag, extra, sizeof(tag));
   if (meshcore_runtime_context_get()->pending_discovery.tag != tag) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
 
   event.tag = meshcore_runtime_context_get()->pending_discovery.tag;
@@ -304,12 +325,16 @@ bool meshcore_runtime_pending_discovery_handle(
   event.out_path_len = out_path_len;
   event.path_hash_size = path_hash_size;
 
-  (void)meshcore_platform_bridge_peer_path_publish(&event, true);
+  rc = meshcore_platform_bridge_peer_path_publish(&event, true);
   meshcore_runtime_pending_discovery_clear();
-  return true;
+  if (rc < 0) {
+    meshcore_platform_bridge_request_error(
+        MESHCORE_RUNTIME_REQUEST_NODE_DISCOVER_PATH, rc);
+  }
+  return MESHCORE_RUNTIME_CORRELATION_MATCHED;
 }
 
-bool meshcore_runtime_pending_trace_handle(
+enum meshcore_runtime_correlation_result meshcore_runtime_pending_trace_handle(
     uint32_t tag, uint8_t flags, const uint8_t *path_snrs, uint8_t path_snr_count,
     uint8_t path_hash_bytes, int8_t response_snr) {
   int8_t out_path_snr[MESHCORE_MAX_PATH_LEN];
@@ -319,23 +344,24 @@ bool meshcore_runtime_pending_trace_handle(
   uint8_t forward_hops;
   uint8_t out_count = 0U;
   uint8_t return_count = 0U;
+  int rc;
 
   if (!meshcore_runtime_context_get()->pending_trace.valid ||
       meshcore_runtime_context_get()->pending_trace.tag != tag || path_snrs == NULL) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
 
   hash_size = (uint8_t)(1U << (flags & 0x03U));
   if (hash_size == 0U || hash_size == 4U ||
       path_hash_bytes == 0U || (path_hash_bytes % hash_size) != 0U) {
     meshcore_runtime_pending_trace_clear();
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
 
   hash_count = (uint8_t)(path_hash_bytes / hash_size);
   if (path_snr_count != hash_count || (hash_count % 2U) == 0U) {
     meshcore_runtime_pending_trace_clear();
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
 
   forward_hops = (uint8_t)((hash_count - 1U) / 2U);
@@ -355,60 +381,76 @@ bool meshcore_runtime_pending_trace_handle(
                                          ARRAY_SIZE(return_path_snr),
                                          response_snr);
 
-  (void)meshcore_platform_bridge_trace_path_handler(
+  rc = meshcore_platform_bridge_trace_path_handler(
       1U, tag, out_path_snr, out_count, return_path_snr, return_count, true,
       response_snr, meshcore_runtime_timestamp_now_seconds());
   meshcore_runtime_pending_trace_clear();
-  return true;
+  if (rc < 0) {
+    meshcore_platform_bridge_request_error(
+        MESHCORE_RUNTIME_REQUEST_NODE_TRACE_PATH, rc);
+  }
+  return MESHCORE_RUNTIME_CORRELATION_MATCHED;
 }
 
-bool meshcore_runtime_pending_telemetry_handle(const uint8_t *key_prefix,
-                                                      uint32_t timestamp,
-                                                      const uint8_t *payload,
-                                                      size_t payload_len) {
+enum meshcore_runtime_correlation_result
+meshcore_runtime_pending_telemetry_handle(const uint8_t *key_prefix,
+                                          uint32_t timestamp,
+                                          const uint8_t *payload,
+                                          size_t payload_len) {
+  int rc;
   uint32_t tag = 0U;
 
   if (!meshcore_runtime_context_get()->pending_telemetry.valid || key_prefix == NULL ||
       payload == NULL || payload_len < sizeof(tag)) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
 
   memcpy(&tag, payload, sizeof(tag));
   if (meshcore_runtime_context_get()->pending_telemetry.tag != tag ||
       memcmp(meshcore_runtime_context_get()->pending_telemetry.key_prefix, key_prefix,
              sizeof(meshcore_runtime_context_get()->pending_telemetry.key_prefix)) != 0) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
 
-  (void)meshcore_platform_bridge_telemetry_handler(
+  rc = meshcore_platform_bridge_telemetry_handler(
       key_prefix, timestamp, tag, &payload[sizeof(tag)], payload_len - sizeof(tag));
   meshcore_runtime_pending_telemetry_clear();
-  return true;
+  if (rc < 0) {
+    meshcore_platform_bridge_request_error(
+        MESHCORE_RUNTIME_REQUEST_NODE_TELEMETRY, rc);
+  }
+  return MESHCORE_RUNTIME_CORRELATION_MATCHED;
 }
 
-bool meshcore_runtime_pending_binary_handle(const uint8_t *key_prefix,
-                                            uint32_t timestamp,
-                                            const uint8_t *payload,
-                                            size_t payload_len) {
+enum meshcore_runtime_correlation_result
+meshcore_runtime_pending_binary_handle(const uint8_t *key_prefix,
+                                       uint32_t timestamp,
+                                       const uint8_t *payload,
+                                       size_t payload_len) {
+  int rc;
   uint32_t tag = 0U;
 
   if (!meshcore_runtime_context_get()->pending_binary.valid || key_prefix == NULL ||
       payload == NULL || payload_len < sizeof(tag)) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
 
   memcpy(&tag, payload, sizeof(tag));
   if (meshcore_runtime_context_get()->pending_binary.tag != tag ||
       memcmp(meshcore_runtime_context_get()->pending_binary.key_prefix, key_prefix,
              sizeof(meshcore_runtime_context_get()->pending_binary.key_prefix)) != 0) {
-    return false;
+    return MESHCORE_RUNTIME_CORRELATION_UNMATCHED;
   }
 
-  (void)meshcore_platform_bridge_binary_response_handler(key_prefix, timestamp, tag,
-                                         &payload[sizeof(tag)],
-                                         payload_len - sizeof(tag));
+  rc = meshcore_platform_bridge_binary_response_handler(
+      key_prefix, timestamp, tag, &payload[sizeof(tag)],
+      payload_len - sizeof(tag));
   meshcore_runtime_pending_binary_clear();
-  return true;
+  if (rc < 0) {
+    meshcore_platform_bridge_request_error(
+        MESHCORE_RUNTIME_REQUEST_NODE_BINARY, rc);
+  }
+  return MESHCORE_RUNTIME_CORRELATION_MATCHED;
 }
 
 #ifdef MESHCORE_ENABLE_TEST_HOOKS
@@ -553,7 +595,8 @@ bool meshcore_test_runtime_pending_binary_get(uint32_t *tag,
 }
 
 bool meshcore_test_runtime_simulate_ack_recv(uint32_t ack_crc) {
-  return meshcore_runtime_expected_ack_handle(ack_crc);
+  return meshcore_runtime_expected_ack_handle(ack_crc) ==
+         MESHCORE_RUNTIME_ACK_MATCHED;
 }
 
 bool meshcore_test_runtime_simulate_peer_path_recv(
@@ -596,13 +639,15 @@ bool meshcore_test_runtime_simulate_peer_path_recv(
       memcpy(&extra[1], out_path_snr, out_path_snr_count);
     }
     return meshcore_runtime_pending_discovery_handle(
-        key_prefix, &packet, (uint8_t *)out_path, path_len_field, extra_type,
-        extra, (uint8_t)(1U + out_path_snr_count));
+               key_prefix, &packet, (uint8_t *)out_path, path_len_field,
+               extra_type, extra, (uint8_t)(1U + out_path_snr_count)) ==
+           MESHCORE_RUNTIME_CORRELATION_MATCHED;
   }
 
   return meshcore_runtime_pending_discovery_handle(
-      key_prefix, &packet, (uint8_t *)out_path, path_len_field, extra_type,
-      (uint8_t *)out_path_snr, out_path_snr_count);
+             key_prefix, &packet, (uint8_t *)out_path, path_len_field,
+             extra_type, (uint8_t *)out_path_snr, out_path_snr_count) ==
+         MESHCORE_RUNTIME_CORRELATION_MATCHED;
 }
 
 bool meshcore_test_runtime_simulate_trace_recv(uint32_t tag, uint8_t flags,
@@ -610,8 +655,9 @@ bool meshcore_test_runtime_simulate_trace_recv(uint32_t tag, uint8_t flags,
                                                uint8_t path_snr_count,
                                                int8_t response_snr) {
   return meshcore_runtime_pending_trace_handle(
-      tag, flags, (const uint8_t *)path_snrs, path_snr_count, path_snr_count,
-      response_snr);
+             tag, flags, (const uint8_t *)path_snrs, path_snr_count,
+             path_snr_count, response_snr) ==
+         MESHCORE_RUNTIME_CORRELATION_MATCHED;
 }
 
 bool meshcore_test_runtime_simulate_telemetry_response_recv(
@@ -630,8 +676,9 @@ bool meshcore_test_runtime_simulate_telemetry_response_recv(
   }
 
   return meshcore_runtime_pending_telemetry_handle(
-      key_prefix, meshcore_runtime_timestamp_now_seconds(), data,
-      sizeof(tag) + payload_len);
+             key_prefix, meshcore_runtime_timestamp_now_seconds(), data,
+             sizeof(tag) + payload_len) ==
+         MESHCORE_RUNTIME_CORRELATION_MATCHED;
 }
 
 bool meshcore_test_runtime_simulate_binary_response_recv(
@@ -650,7 +697,8 @@ bool meshcore_test_runtime_simulate_binary_response_recv(
   }
 
   return meshcore_runtime_pending_binary_handle(
-      key_prefix, meshcore_runtime_timestamp_now_seconds(), data,
-      sizeof(tag) + payload_len);
+             key_prefix, meshcore_runtime_timestamp_now_seconds(), data,
+             sizeof(tag) + payload_len) ==
+         MESHCORE_RUNTIME_CORRELATION_MATCHED;
 }
 #endif /* MESHCORE_ENABLE_TEST_HOOKS */

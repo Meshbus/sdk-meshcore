@@ -305,14 +305,17 @@ int meshcore_platform_node_advert_profile_get(
 /**
  * @brief Look up an outbound path for a peer public key.
  *
- * Hosts must set @ref meshcore_common_peer_path_t.is_neighbor when
- * @ref meshcore_common_peer_path_t.out_path_len is zero. A zero-length path
- * with `is_neighbor == false` is treated as unknown and falls back to flood.
+ * A zero return means the peer exists. Set
+ * @ref meshcore_common_peer_path_t.has_out_path to distinguish a known direct
+ * route from flood fallback. A known route with
+ * @ref meshcore_common_peer_path_t.out_path_byte_len equal to zero is a
+ * zero-hop direct neighbor. Return `-ENOENT` only when the peer does not
+ * exist; other negative errors propagate to synchronous request APIs.
  *
  * @param public_key Peer public key.
  * @param[out] out Peer path to fill.
- * @return 0 on success, -ENOENT when no path is known, or another negative
- * errno-style value.
+ * @return 0 when the peer exists, including when @c has_out_path is false;
+ * -ENOENT when the peer does not exist; or another negative errno-style value.
  */
 int meshcore_platform_peer_path_get_by_key(
     const uint8_t *public_key, meshcore_common_peer_path_t *out);

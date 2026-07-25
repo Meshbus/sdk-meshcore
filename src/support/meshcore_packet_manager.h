@@ -85,7 +85,7 @@ struct meshcore_packet *meshcore_packet_queue_manager_alloc_new(
 void meshcore_packet_queue_manager_free(
     struct meshcore_packet_queue_manager *manager,
     struct meshcore_packet *packet);
-void meshcore_packet_queue_manager_queue_outbound(
+int meshcore_packet_queue_manager_queue_outbound(
     struct meshcore_packet_queue_manager *manager,
     struct meshcore_packet *packet, uint8_t priority, uint32_t scheduled_for);
 struct meshcore_packet *meshcore_packet_queue_manager_get_next_outbound(

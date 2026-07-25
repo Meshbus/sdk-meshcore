@@ -230,7 +230,8 @@ int meshcore_platform_peer_path_get_by_key(
     return -EINVAL;
   }
   memset(out, 0, sizeof(*out));
-  out->out_path_len = MESHCORE_OUT_PATH_UNKNOWN;
+  out->has_out_path = false;
+  out->out_path_byte_len = 0U;
   out->path_hash_size = 1U;
   return -ENOENT;
 }

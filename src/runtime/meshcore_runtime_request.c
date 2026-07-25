@@ -23,28 +23,6 @@ static uint8_t meshcore_runtime_telemetry_wire_encode(uint8_t permission_mask) {
   return (uint8_t)(~permission_mask);
 }
 
-static bool meshcore_runtime_request_needs_packet(uint8_t type) {
-  switch (type) {
-    case MESHCORE_RUNTIME_REQUEST_NODE_ADVERT:
-    case MESHCORE_RUNTIME_REQUEST_NODE_PEER_ADVERT:
-    case MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_NODE:
-    case MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_CHANNEL:
-    case MESHCORE_RUNTIME_REQUEST_NODE_DISCOVER_PATH:
-    case MESHCORE_RUNTIME_REQUEST_NODE_TRACE_PATH:
-    case MESHCORE_RUNTIME_REQUEST_NODE_TELEMETRY:
-    case MESHCORE_RUNTIME_REQUEST_NODE_BINARY:
-    case MESHCORE_RUNTIME_REQUEST_NODE_DISCOVER:
-    case MESHCORE_RUNTIME_REQUEST_CHANNEL_DATA:
-    case MESHCORE_RUNTIME_REQUEST_RAW_DATA:
-    case MESHCORE_RUNTIME_REQUEST_CONTROL_DATA:
-    case MESHCORE_RUNTIME_REQUEST_NODE_BINARY_RESPONSE:
-    case MESHCORE_RUNTIME_REQUEST_NODE_ANON_DATA:
-      return true;
-    default:
-      return false;
-  }
-}
-
 static void meshcore_runtime_request_log_transient_failure(uint8_t request_type,
                                                            int err_code) {
   if (err_code == -ENOBUFS || err_code == -EAGAIN || err_code == -EBUSY) {
@@ -218,7 +196,6 @@ static int meshcore_runtime_request_validate_node_binary_response(
   if (request == NULL || (payload == NULL && payload_len > 0U) ||
       payload_len > MESHCORE_MAX_SERVICE_RESPONSE_PAYLOAD_LEN ||
       !meshcore_mesh_datagram_plaintext_fits(sizeof(uint32_t) + payload_len) ||
-      request->tag == 0U ||
       request->payload_len > MESHCORE_MAX_SERVICE_REQUEST_PAYLOAD_LEN) {
     return -EINVAL;
   }
@@ -257,7 +234,7 @@ static int meshcore_runtime_request_add(
   return meshcore_runtime_request_execute_now(&request);
 }
 
-static void meshcore_runtime_request_execute_node_advert(
+static int meshcore_runtime_request_execute_node_advert(
     const struct meshcore_runtime_request_node_advert *request) {
   meshcore_common_node_identity_t node_identity;
   meshcore_common_node_advert_profile_t advert_profile;
@@ -266,21 +243,27 @@ static void meshcore_runtime_request_execute_node_advert(
   uint8_t app_data[MESHCORE_MAX_ADVERT_DATA_LEN];
   uint8_t advert_type;
   uint8_t app_data_len;
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_runtime_sync_local_identity() != 0 ||
-      meshcore_platform_bridge_node_identity_get(&node_identity) != 0 ||
-      meshcore_platform_bridge_node_advert_profile_get(&advert_profile) != 0) {
-    meshcore_runtime_request_log_transient_failure(
-        MESHCORE_RUNTIME_REQUEST_NODE_ADVERT, -EAGAIN);
-    return;
+  rc = meshcore_runtime_sync_local_identity();
+  if (rc != 0) {
+    return rc;
+  }
+  rc = meshcore_platform_bridge_node_identity_get(&node_identity);
+  if (rc != 0) {
+    return rc;
+  }
+  rc = meshcore_platform_bridge_node_advert_profile_get(&advert_profile);
+  if (rc != 0) {
+    return rc;
   }
 
   advert_type = meshcore_runtime_role_to_advert_type(node_identity.role);
   if (advert_type == ADV_TYPE_NONE) {
-    return;
+    return -EINVAL;
   }
 
   meshcore_advert_data_builder_init_with_name(&builder, advert_type,
@@ -298,23 +281,25 @@ static void meshcore_runtime_request_execute_node_advert(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_ADVERT, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
   if (request->flood) {
-    meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet, 0U,
-                             meshcore_runtime_local_path_hash_size_get());
+    return meshcore_mesh_send_flood(
+        &meshcore_runtime_context_get()->mesh, packet, 0U,
+        meshcore_runtime_local_path_hash_size_get());
   } else {
-    meshcore_mesh_send_zero_hop(&meshcore_runtime_context_get()->mesh, packet, 0U);
+    return meshcore_mesh_send_zero_hop(
+        &meshcore_runtime_context_get()->mesh, packet, 0U);
   }
 }
 
-static void meshcore_runtime_request_execute_node_peer_advert(
+static int meshcore_runtime_request_execute_node_peer_advert(
     const struct meshcore_runtime_request_node_peer_advert *request) {
   struct meshcore_packet *packet;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
 
   packet = meshcore_dispatcher_obtain_new_packet(
@@ -322,7 +307,7 @@ static void meshcore_runtime_request_execute_node_peer_advert(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_PEER_ADVERT, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
   if (!meshcore_packet_read_from(packet, request->raw_advert,
@@ -330,13 +315,14 @@ static void meshcore_runtime_request_execute_node_peer_advert(
       meshcore_packet_get_payload_type(packet) != PAYLOAD_TYPE_ADVERT) {
     meshcore_dispatcher_release_packet(&meshcore_runtime_context_get()->mesh.dispatcher,
                                        packet);
-    return;
+    return -EINVAL;
   }
 
-  meshcore_mesh_send_zero_hop(&meshcore_runtime_context_get()->mesh, packet, 0U);
+  return meshcore_mesh_send_zero_hop(
+      &meshcore_runtime_context_get()->mesh, packet, 0U);
 }
 
-static void meshcore_runtime_request_execute_message_send_to_node(
+static int meshcore_runtime_request_execute_message_send_to_node(
     const struct meshcore_runtime_request_message_send_to_node *request) {
   struct meshcore_identity recipient;
   struct meshcore_packet *packet;
@@ -347,18 +333,19 @@ static void meshcore_runtime_request_execute_message_send_to_node(
   uint32_t expected_ack = 0U;
   uint32_t timestamp;
   size_t len;
+  size_t ack_slot = MESHCORE_RUNTIME_EXPECTED_ACK_TABLE_SIZE;
   bool can_direct = false;
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_runtime_sync_local_identity() != 0) {
-    meshcore_runtime_request_log_transient_failure(
-        MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_NODE, -EAGAIN);
-    return;
+  rc = meshcore_runtime_sync_local_identity();
+  if (rc != 0) {
+    return rc;
   }
   if (request->attempt > 3U && request->payload_len > (MESHCORE_MAX_MESSAGE_TX_LEN - 2U)) {
-    return;
+    return -EINVAL;
   }
 
   timestamp = meshcore_clock_rtc_get_current_time();
@@ -386,28 +373,47 @@ static void meshcore_runtime_request_execute_message_send_to_node(
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_NODE, -ENOBUFS);
     memset(secret, 0, sizeof(secret));
-    return;
+    return -ENOBUFS;
   }
   memset(secret, 0, sizeof(secret));
 
-  meshcore_runtime_expected_ack_register(expected_ack, request->public_key,
-                                         request->attempt);
-  if (!request->flood &&
-      meshcore_runtime_peer_path_get(request->public_key, &peer_path,
-                                     &path_len)) {
-    can_direct = true;
+  if (expected_ack != 0U) {
+    rc = meshcore_runtime_expected_ack_reserve(
+        expected_ack, request->public_key, request->attempt, &ack_slot);
+    if (rc != 0) {
+      meshcore_dispatcher_release_packet(
+          &meshcore_runtime_context_get()->mesh.dispatcher, packet);
+      return rc;
+    }
+  }
+  if (!request->flood) {
+    rc = meshcore_runtime_peer_path_get(request->public_key, &peer_path,
+                                        &path_len);
+    if (rc == 0) {
+      can_direct = true;
+    } else if (rc != -ENOENT) {
+      meshcore_dispatcher_release_packet(
+          &meshcore_runtime_context_get()->mesh.dispatcher, packet);
+      meshcore_runtime_expected_ack_rollback(ack_slot);
+      return rc;
+    }
   }
 
   if (request->flood || !can_direct) {
-    meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet, 0U,
-                             meshcore_runtime_local_path_hash_size_get());
+    rc = meshcore_mesh_send_flood(
+        &meshcore_runtime_context_get()->mesh, packet, 0U,
+        meshcore_runtime_local_path_hash_size_get());
   } else {
-    meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet,
-                              peer_path.out_path, path_len, 0U);
+    rc = meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh,
+                                   packet, peer_path.out_path, path_len, 0U);
   }
+  if (rc != 0) {
+    meshcore_runtime_expected_ack_rollback(ack_slot);
+  }
+  return rc;
 }
 
-static void meshcore_runtime_request_execute_message_send_to_channel(
+static int meshcore_runtime_request_execute_message_send_to_channel(
     const struct meshcore_runtime_request_message_send_to_channel *request) {
   meshcore_common_node_identity_t node_identity;
   struct meshcore_group_channel channel;
@@ -419,20 +425,24 @@ static void meshcore_runtime_request_execute_message_send_to_channel(
   size_t payload_len;
   size_t prefix_len;
   size_t len;
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_platform_bridge_node_identity_get(&node_identity) != 0) {
-    meshcore_runtime_request_log_transient_failure(
-        MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_CHANNEL, -EAGAIN);
-    return;
+  rc = meshcore_platform_bridge_node_identity_get(&node_identity);
+  if (rc != 0) {
+    return rc;
   }
-  if (meshcore_platform_bridge_channel_secret_hash(request->secret, request->secret_len,
-                                          channel_hash) != 0 ||
-      meshcore_platform_bridge_channel_secret_match_exists(channel_hash[0], request->secret,
-                                                  request->secret_len) <= 0) {
-    return;
+  rc = meshcore_platform_bridge_channel_secret_hash(
+      request->secret, request->secret_len, channel_hash);
+  if (rc != 0) {
+    return rc;
+  }
+  rc = meshcore_platform_bridge_channel_secret_match_exists(
+      channel_hash[0], request->secret, request->secret_len);
+  if (rc <= 0) {
+    return rc < 0 ? rc : -ENOENT;
   }
 
   memset(&channel, 0, sizeof(channel));
@@ -446,7 +456,7 @@ static void meshcore_runtime_request_execute_message_send_to_channel(
   (void)snprintf(prefix, sizeof(prefix), "%s: ", node_identity.name);
   prefix_len = strnlen(prefix, sizeof(prefix));
   if (prefix_len >= MESHCORE_MAX_MESSAGE_TX_LEN) {
-    return;
+    return -EINVAL;
   }
   payload_len = request->payload_len;
   if (payload_len + prefix_len > MESHCORE_MAX_MESSAGE_TX_LEN) {
@@ -462,11 +472,12 @@ static void meshcore_runtime_request_execute_message_send_to_channel(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_CHANNEL, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet, 0U,
-                           meshcore_runtime_local_path_hash_size_get());
+  return meshcore_mesh_send_flood(
+      &meshcore_runtime_context_get()->mesh, packet, 0U,
+      meshcore_runtime_local_path_hash_size_get());
 }
 
 static void meshcore_runtime_request_prepare_req_data(uint8_t req_data[9],
@@ -477,7 +488,7 @@ static void meshcore_runtime_request_prepare_req_data(uint8_t req_data[9],
   meshcore_platform_bridge_rng_random(&req_data[5], 4U);
 }
 
-static void meshcore_runtime_request_execute_node_discover_path(
+static int meshcore_runtime_request_execute_node_discover_path(
     const struct meshcore_runtime_request_node_discover_path *request) {
   struct meshcore_identity recipient;
   struct meshcore_packet *packet;
@@ -485,21 +496,17 @@ static void meshcore_runtime_request_execute_node_discover_path(
   uint8_t req_data[9];
   uint8_t data[13];
   uint32_t tag;
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_runtime_sync_local_identity() != 0) {
-    meshcore_runtime_request_log_transient_failure(
-        MESHCORE_RUNTIME_REQUEST_NODE_DISCOVER_PATH, -EAGAIN);
-    return;
+  rc = meshcore_runtime_sync_local_identity();
+  if (rc != 0) {
+    return rc;
   }
 
   tag = request->tag;
-  if (tag == 0U) {
-    tag = meshcore_clock_rtc_get_current_time_unique(
-        &meshcore_runtime_context_get()->rtc_clock_state);
-  }
   meshcore_runtime_request_prepare_req_data(req_data, MESHCORE_TELEM_PERM_BASE);
   memcpy(data, &tag, sizeof(tag));
   memcpy(&data[4], req_data, sizeof(req_data));
@@ -514,15 +521,19 @@ static void meshcore_runtime_request_execute_node_discover_path(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_DISCOVER_PATH, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  meshcore_runtime_pending_discovery_register(tag, request->public_key);
-  meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet, 0U,
-                           meshcore_runtime_local_path_hash_size_get());
+  rc = meshcore_mesh_send_flood(
+      &meshcore_runtime_context_get()->mesh, packet, 0U,
+      meshcore_runtime_local_path_hash_size_get());
+  if (rc == 0) {
+    meshcore_runtime_pending_discovery_register(tag, request->public_key);
+  }
+  return rc;
 }
 
-static void meshcore_runtime_request_execute_node_trace_path(
+static int meshcore_runtime_request_execute_node_trace_path(
     const struct meshcore_runtime_request_node_trace_path *request) {
   struct meshcore_packet *packet;
   uint8_t trace_path[MESHCORE_MAX_PATH_LEN];
@@ -534,11 +545,12 @@ static void meshcore_runtime_request_execute_node_trace_path(
   size_t max_trace_len = MESHCORE_PACKET_PAYLOAD_MAX_LEN - 9U;
   size_t hop_count;
   size_t hop;
+  int rc;
 
   if (request == NULL ||
       meshcore_runtime_request_validate_node_trace(
           request->path, request->path_len, request->path_hash_size) != 0) {
-    return;
+    return -EINVAL;
   }
 
   trace_hash_size = request->path_hash_size;
@@ -548,14 +560,14 @@ static void meshcore_runtime_request_execute_node_trace_path(
   if (trace_hash_size == 2U) {
     flags = 1U;
   } else if (trace_hash_size != 1U) {
-    return;
+    return -EINVAL;
   }
 
   if (request->path_hash_size != trace_hash_size) {
     hop_count = request->path_len / request->path_hash_size;
     trace_len = hop_count * trace_hash_size;
     if (trace_len > max_trace_len || trace_len > sizeof(trace_path)) {
-      return;
+      return -EINVAL;
     }
     for (hop = 0U; hop < hop_count; hop++) {
       memcpy(&trace_path[hop * trace_hash_size],
@@ -565,31 +577,30 @@ static void meshcore_runtime_request_execute_node_trace_path(
   } else {
     trace_len = request->path_len;
     if (trace_len > max_trace_len || trace_len > sizeof(trace_path)) {
-      return;
+      return -EINVAL;
     }
     memcpy(trace_path, request->path, trace_len);
   }
 
   tag = request->tag;
-  if (tag == 0U) {
-    tag = meshcore_clock_rtc_get_current_time_unique(
-        &meshcore_runtime_context_get()->rtc_clock_state);
-  }
   auth_code = meshcore_clock_millis_get() & 0x00FFFFFFUL;
   packet = meshcore_mesh_create_trace(&meshcore_runtime_context_get()->mesh, tag,
                                       auth_code, flags);
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_TRACE_PATH, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  meshcore_runtime_pending_trace_register(tag);
-  meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet, trace_path,
-                            (uint8_t)trace_len, 0U);
+  rc = meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet,
+                                 trace_path, (uint8_t)trace_len, 0U);
+  if (rc == 0) {
+    meshcore_runtime_pending_trace_register(tag);
+  }
+  return rc;
 }
 
-static void meshcore_runtime_request_execute_node_telemetry(
+static int meshcore_runtime_request_execute_node_telemetry(
     const struct meshcore_runtime_request_node_telemetry *request) {
   struct meshcore_identity recipient;
   struct meshcore_packet *packet;
@@ -599,21 +610,17 @@ static void meshcore_runtime_request_execute_node_telemetry(
   uint8_t data[13];
   uint8_t path_len = 0U;
   uint32_t tag;
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_runtime_sync_local_identity() != 0) {
-    meshcore_runtime_request_log_transient_failure(
-        MESHCORE_RUNTIME_REQUEST_NODE_TELEMETRY, -EAGAIN);
-    return;
+  rc = meshcore_runtime_sync_local_identity();
+  if (rc != 0) {
+    return rc;
   }
 
   tag = request->tag;
-  if (tag == 0U) {
-    tag = meshcore_clock_rtc_get_current_time_unique(
-        &meshcore_runtime_context_get()->rtc_clock_state);
-  }
   meshcore_runtime_request_prepare_req_data(req_data, request->permission_mask);
   memcpy(data, &tag, sizeof(tag));
   memcpy(&data[4], req_data, sizeof(req_data));
@@ -628,22 +635,30 @@ static void meshcore_runtime_request_execute_node_telemetry(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_TELEMETRY, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  meshcore_runtime_pending_telemetry_register(tag, request->public_key,
-                                              request->permission_mask);
-  if (meshcore_runtime_peer_path_get(request->public_key, &peer_path,
-                                     &path_len)) {
-    meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet,
-                              peer_path.out_path, path_len, 0U);
+  rc = meshcore_runtime_peer_path_get(request->public_key, &peer_path,
+                                      &path_len);
+  if (rc == 0) {
+    rc = meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh,
+                                   packet, peer_path.out_path, path_len, 0U);
+  } else if (rc == -ENOENT) {
+    rc = meshcore_mesh_send_flood(
+        &meshcore_runtime_context_get()->mesh, packet, 0U,
+        meshcore_runtime_local_path_hash_size_get());
   } else {
-    meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet, 0U,
-                             meshcore_runtime_local_path_hash_size_get());
+    meshcore_dispatcher_release_packet(
+        &meshcore_runtime_context_get()->mesh.dispatcher, packet);
   }
+  if (rc == 0) {
+    meshcore_runtime_pending_telemetry_register(
+        tag, request->public_key, request->permission_mask);
+  }
+  return rc;
 }
 
-static void meshcore_runtime_request_execute_node_binary(
+static int meshcore_runtime_request_execute_node_binary(
     const struct meshcore_runtime_request_node_binary *request) {
   struct meshcore_identity recipient;
   struct meshcore_packet *packet;
@@ -652,20 +667,20 @@ static void meshcore_runtime_request_execute_node_binary(
   uint8_t secret[MESHCORE_PUBLIC_KEY_SIZE];
   uint8_t data[sizeof(uint32_t) + MESHCORE_MAX_SERVICE_REQUEST_PAYLOAD_LEN];
   uint32_t tag;
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_runtime_sync_local_identity() != 0) {
-    meshcore_runtime_request_log_transient_failure(
-        MESHCORE_RUNTIME_REQUEST_NODE_BINARY, -EAGAIN);
-    return;
+  rc = meshcore_runtime_sync_local_identity();
+  if (rc != 0) {
+    return rc;
   }
 
-  tag = meshcore_clock_rtc_get_current_time_unique(
-      &meshcore_runtime_context_get()->rtc_clock_state);
-  if (request->tag != 0U) {
-    tag = request->tag;
+  tag = request->tag;
+  if (tag == 0U) {
+    tag = meshcore_clock_rtc_get_current_time_unique(
+        &meshcore_runtime_context_get()->rtc_clock_state);
   }
   memcpy(data, &tag, sizeof(tag));
   memcpy(&data[sizeof(tag)], request->payload, request->payload_len);
@@ -680,35 +695,43 @@ static void meshcore_runtime_request_execute_node_binary(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_BINARY, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  meshcore_runtime_pending_binary_register(tag, request->public_key);
-  if (meshcore_runtime_peer_path_get(request->public_key, &peer_path,
-                                     &path_len)) {
-    meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet,
-                              peer_path.out_path, path_len, 0U);
+  rc = meshcore_runtime_peer_path_get(request->public_key, &peer_path,
+                                      &path_len);
+  if (rc == 0) {
+    rc = meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh,
+                                   packet, peer_path.out_path, path_len, 0U);
+  } else if (rc == -ENOENT) {
+    rc = meshcore_mesh_send_flood(
+        &meshcore_runtime_context_get()->mesh, packet, 0U,
+        meshcore_runtime_local_path_hash_size_get());
   } else {
-    meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet, 0U,
-                             meshcore_runtime_local_path_hash_size_get());
+    meshcore_dispatcher_release_packet(
+        &meshcore_runtime_context_get()->mesh.dispatcher, packet);
   }
+  if (rc == 0) {
+    meshcore_runtime_pending_binary_register(tag, request->public_key);
+  }
+  return rc;
 }
 
-static void meshcore_runtime_request_execute_node_anon_data(
+static int meshcore_runtime_request_execute_node_anon_data(
     const struct meshcore_runtime_request_node_anon_data *request) {
   struct meshcore_identity recipient;
   struct meshcore_packet *packet;
   meshcore_common_peer_path_t peer_path;
   uint8_t path_len = 0U;
   uint8_t secret[MESHCORE_PUBLIC_KEY_SIZE];
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_runtime_sync_local_identity() != 0) {
-    meshcore_runtime_request_log_transient_failure(
-        MESHCORE_RUNTIME_REQUEST_NODE_ANON_DATA, -EAGAIN);
-    return;
+  rc = meshcore_runtime_sync_local_identity();
+  if (rc != 0) {
+    return rc;
   }
 
   meshcore_identity_init_from_pub_key(&recipient, request->public_key);
@@ -723,20 +746,26 @@ static void meshcore_runtime_request_execute_node_anon_data(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_ANON_DATA, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  if (meshcore_runtime_peer_path_get(request->public_key, &peer_path,
-                                     &path_len)) {
-    meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet,
-                              peer_path.out_path, path_len, 0U);
-  } else {
-    meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet, 0U,
-                             meshcore_runtime_local_path_hash_size_get());
+  rc = meshcore_runtime_peer_path_get(request->public_key, &peer_path,
+                                      &path_len);
+  if (rc == 0) {
+    return meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh,
+                                     packet, peer_path.out_path, path_len, 0U);
   }
+  if (rc == -ENOENT) {
+    return meshcore_mesh_send_flood(
+        &meshcore_runtime_context_get()->mesh, packet, 0U,
+        meshcore_runtime_local_path_hash_size_get());
+  }
+  meshcore_dispatcher_release_packet(
+      &meshcore_runtime_context_get()->mesh.dispatcher, packet);
+  return rc;
 }
 
-static void meshcore_runtime_request_execute_node_binary_response(
+static int meshcore_runtime_request_execute_node_binary_response(
     const struct meshcore_runtime_request_node_binary_response *request) {
   struct meshcore_identity recipient;
   struct meshcore_packet *packet;
@@ -745,14 +774,14 @@ static void meshcore_runtime_request_execute_node_binary_response(
   uint8_t secret[MESHCORE_PUBLIC_KEY_SIZE];
   uint8_t data[sizeof(uint32_t) + MESHCORE_MAX_SERVICE_RESPONSE_PAYLOAD_LEN];
   size_t data_len;
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_runtime_sync_local_identity() != 0) {
-    meshcore_runtime_request_log_transient_failure(
-        MESHCORE_RUNTIME_REQUEST_NODE_BINARY_RESPONSE, -EAGAIN);
-    return;
+  rc = meshcore_runtime_sync_local_identity();
+  if (rc != 0) {
+    return rc;
   }
 
   memcpy(data, &request->request.tag, sizeof(request->request.tag));
@@ -776,12 +805,12 @@ static void meshcore_runtime_request_execute_node_binary_response(
     if (packet == NULL) {
       meshcore_runtime_request_log_transient_failure(
           MESHCORE_RUNTIME_REQUEST_NODE_BINARY_RESPONSE, -ENOBUFS);
-      return;
+      return -ENOBUFS;
     }
-    meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet,
-                             MESHCORE_RUNTIME_SERVER_RESPONSE_DELAY_MS,
-                             meshcore_runtime_local_path_hash_size_get());
-    return;
+    return meshcore_mesh_send_flood(
+        &meshcore_runtime_context_get()->mesh, packet,
+        MESHCORE_RUNTIME_SERVER_RESPONSE_DELAY_MS,
+        meshcore_runtime_local_path_hash_size_get());
   }
 
   packet = meshcore_mesh_create_datagram(&meshcore_runtime_context_get()->mesh,
@@ -791,28 +820,34 @@ static void meshcore_runtime_request_execute_node_binary_response(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_BINARY_RESPONSE, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  if (meshcore_runtime_peer_path_get(request->request.public_key, &peer_path,
-                                     &path_len)) {
-    meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet,
-                              peer_path.out_path, path_len,
-                              MESHCORE_RUNTIME_SERVER_RESPONSE_DELAY_MS);
-  } else {
-    meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet,
-                             MESHCORE_RUNTIME_SERVER_RESPONSE_DELAY_MS,
-                             meshcore_runtime_local_path_hash_size_get());
+  rc = meshcore_runtime_peer_path_get(request->request.public_key, &peer_path,
+                                      &path_len);
+  if (rc == 0) {
+    return meshcore_mesh_send_direct(
+        &meshcore_runtime_context_get()->mesh, packet, peer_path.out_path,
+        path_len, MESHCORE_RUNTIME_SERVER_RESPONSE_DELAY_MS);
   }
+  if (rc == -ENOENT) {
+    return meshcore_mesh_send_flood(
+        &meshcore_runtime_context_get()->mesh, packet,
+        MESHCORE_RUNTIME_SERVER_RESPONSE_DELAY_MS,
+        meshcore_runtime_local_path_hash_size_get());
+  }
+  meshcore_dispatcher_release_packet(
+      &meshcore_runtime_context_get()->mesh.dispatcher, packet);
+  return rc;
 }
 
-static void meshcore_runtime_request_execute_node_discover(
+static int meshcore_runtime_request_execute_node_discover(
     const struct meshcore_runtime_request_node_discover *request) {
   struct meshcore_packet *packet;
   uint8_t data[10U];
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
 
   data[0] = MESHCORE_RUNTIME_CTL_TYPE_NODE_DISCOVER_REQ;
@@ -828,27 +863,33 @@ static void meshcore_runtime_request_execute_node_discover(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_NODE_DISCOVER, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  meshcore_mesh_send_zero_hop(&meshcore_runtime_context_get()->mesh, packet, 0U);
+  return meshcore_mesh_send_zero_hop(
+      &meshcore_runtime_context_get()->mesh, packet, 0U);
 }
 
-static void meshcore_runtime_request_execute_channel_data(
+static int meshcore_runtime_request_execute_channel_data(
     const struct meshcore_runtime_request_channel_data *request) {
   struct meshcore_group_channel channel;
   struct meshcore_packet *packet;
   uint8_t channel_hash[MESHCORE_CHANNEL_HASH_BYTES];
   uint8_t data[3U + MESHCORE_MAX_CHANNEL_DATA_PAYLOAD_LEN];
+  int rc;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
-  if (meshcore_platform_bridge_channel_secret_hash(request->secret, request->secret_len,
-                                   channel_hash) != 0 ||
-      meshcore_platform_bridge_channel_secret_match_exists(channel_hash[0], request->secret,
-                                           request->secret_len) <= 0) {
-    return;
+  rc = meshcore_platform_bridge_channel_secret_hash(
+      request->secret, request->secret_len, channel_hash);
+  if (rc != 0) {
+    return rc;
+  }
+  rc = meshcore_platform_bridge_channel_secret_match_exists(
+      channel_hash[0], request->secret, request->secret_len);
+  if (rc <= 0) {
+    return rc < 0 ? rc : -ENOENT;
   }
 
   memset(&channel, 0, sizeof(channel));
@@ -868,24 +909,26 @@ static void meshcore_runtime_request_execute_channel_data(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_CHANNEL_DATA, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
   if (request->path_len == MESHCORE_OUT_PATH_UNKNOWN) {
-    meshcore_mesh_send_flood(&meshcore_runtime_context_get()->mesh, packet, 0U,
-                             meshcore_runtime_local_path_hash_size_get());
+    return meshcore_mesh_send_flood(
+        &meshcore_runtime_context_get()->mesh, packet, 0U,
+        meshcore_runtime_local_path_hash_size_get());
   } else {
-    meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet, request->path,
-                              request->path_len, 0U);
+    return meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh,
+                                     packet, request->path, request->path_len,
+                                     0U);
   }
 }
 
-static void meshcore_runtime_request_execute_raw_data(
+static int meshcore_runtime_request_execute_raw_data(
     const struct meshcore_runtime_request_raw_data *request) {
   struct meshcore_packet *packet;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
 
   packet = meshcore_mesh_create_raw_data(&meshcore_runtime_context_get()->mesh,
@@ -894,19 +937,20 @@ static void meshcore_runtime_request_execute_raw_data(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_RAW_DATA, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh, packet, request->path,
-                            request->path_len, 0U);
+  return meshcore_mesh_send_direct(&meshcore_runtime_context_get()->mesh,
+                                   packet, request->path, request->path_len,
+                                   0U);
 }
 
-static void meshcore_runtime_request_execute_control_data(
+static int meshcore_runtime_request_execute_control_data(
     const struct meshcore_runtime_request_control_data *request) {
   struct meshcore_packet *packet;
 
   if (request == NULL) {
-    return;
+    return -EINVAL;
   }
 
   packet = meshcore_mesh_create_control_data(&meshcore_runtime_context_get()->mesh,
@@ -915,71 +959,64 @@ static void meshcore_runtime_request_execute_control_data(
   if (packet == NULL) {
     meshcore_runtime_request_log_transient_failure(
         MESHCORE_RUNTIME_REQUEST_CONTROL_DATA, -ENOBUFS);
-    return;
+    return -ENOBUFS;
   }
 
-  meshcore_mesh_send_zero_hop(&meshcore_runtime_context_get()->mesh, packet, 0U);
+  return meshcore_mesh_send_zero_hop(
+      &meshcore_runtime_context_get()->mesh, packet, 0U);
 }
 
-static void meshcore_runtime_request_execute(
+static int meshcore_runtime_request_execute(
     const struct meshcore_runtime_request_slot *request) {
   if (request == NULL || !request->used) {
-    return;
+    return -EINVAL;
   }
 
   switch (request->type) {
     case MESHCORE_RUNTIME_REQUEST_NODE_ADVERT:
-      meshcore_runtime_request_execute_node_advert(&request->data.node_advert);
-      break;
+      return meshcore_runtime_request_execute_node_advert(
+          &request->data.node_advert);
     case MESHCORE_RUNTIME_REQUEST_NODE_PEER_ADVERT:
-      meshcore_runtime_request_execute_node_peer_advert(
+      return meshcore_runtime_request_execute_node_peer_advert(
           &request->data.node_peer_advert);
-      break;
     case MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_NODE:
-      meshcore_runtime_request_execute_message_send_to_node(
+      return meshcore_runtime_request_execute_message_send_to_node(
           &request->data.message_send_to_node);
-      break;
     case MESHCORE_RUNTIME_REQUEST_MESSAGE_SEND_TO_CHANNEL:
-      meshcore_runtime_request_execute_message_send_to_channel(
+      return meshcore_runtime_request_execute_message_send_to_channel(
           &request->data.message_send_to_channel);
-      break;
     case MESHCORE_RUNTIME_REQUEST_NODE_DISCOVER_PATH:
-      meshcore_runtime_request_execute_node_discover_path(
+      return meshcore_runtime_request_execute_node_discover_path(
           &request->data.node_discover_path);
-      break;
     case MESHCORE_RUNTIME_REQUEST_NODE_TRACE_PATH:
-      meshcore_runtime_request_execute_node_trace_path(
+      return meshcore_runtime_request_execute_node_trace_path(
           &request->data.node_trace_path);
-      break;
     case MESHCORE_RUNTIME_REQUEST_NODE_TELEMETRY:
-      meshcore_runtime_request_execute_node_telemetry(
+      return meshcore_runtime_request_execute_node_telemetry(
           &request->data.node_telemetry);
-      break;
     case MESHCORE_RUNTIME_REQUEST_NODE_BINARY:
-      meshcore_runtime_request_execute_node_binary(&request->data.node_binary);
-      break;
+      return meshcore_runtime_request_execute_node_binary(
+          &request->data.node_binary);
     case MESHCORE_RUNTIME_REQUEST_NODE_ANON_DATA:
-      meshcore_runtime_request_execute_node_anon_data(
+      return meshcore_runtime_request_execute_node_anon_data(
           &request->data.node_anon_data);
-      break;
     case MESHCORE_RUNTIME_REQUEST_NODE_DISCOVER:
-      meshcore_runtime_request_execute_node_discover(&request->data.node_discover);
-      break;
+      return meshcore_runtime_request_execute_node_discover(
+          &request->data.node_discover);
     case MESHCORE_RUNTIME_REQUEST_CHANNEL_DATA:
-      meshcore_runtime_request_execute_channel_data(&request->data.channel_data);
-      break;
+      return meshcore_runtime_request_execute_channel_data(
+          &request->data.channel_data);
     case MESHCORE_RUNTIME_REQUEST_RAW_DATA:
-      meshcore_runtime_request_execute_raw_data(&request->data.raw_data);
-      break;
+      return meshcore_runtime_request_execute_raw_data(
+          &request->data.raw_data);
     case MESHCORE_RUNTIME_REQUEST_CONTROL_DATA:
-      meshcore_runtime_request_execute_control_data(&request->data.control_data);
-      break;
+      return meshcore_runtime_request_execute_control_data(
+          &request->data.control_data);
     case MESHCORE_RUNTIME_REQUEST_NODE_BINARY_RESPONSE:
-      meshcore_runtime_request_execute_node_binary_response(
+      return meshcore_runtime_request_execute_node_binary_response(
           &request->data.node_binary_response);
-      break;
     default:
-      break;
+      return -EINVAL;
   }
 }
 
@@ -993,14 +1030,16 @@ static int meshcore_runtime_request_execute_now(
   if (request == NULL || !request->used) {
     return -EINVAL;
   }
-  if (meshcore_runtime_request_needs_packet(request->type) &&
-      meshcore_packet_queue_manager_get_free_count(
-          &meshcore_runtime_context_get()->packet_manager) <= 0) {
-    return -ENOBUFS;
+  rc = meshcore_runtime_request_execute(request);
+  if (rc != 0) {
+    return rc;
   }
 
-  meshcore_runtime_request_execute(request);
-  meshcore_runtime_timer_sync((uint32_t)meshcore_clock_millis_get());
+  rc = meshcore_runtime_timer_sync(
+      (uint32_t)meshcore_clock_millis_get());
+  if (rc < 0) {
+    meshcore_platform_bridge_request_error(request->type, rc);
+  }
   return 0;
 }
 
@@ -1250,17 +1289,9 @@ int meshcore_node_telemetry_request(const uint8_t *public_key,
   return rc;
 }
 
-int meshcore_node_binary_request(const uint8_t *public_key,
-                                 const uint8_t *payload,
-                                 size_t payload_len) {
-  return meshcore_node_binary_request_with_tag(public_key, payload, payload_len,
-                                               0U);
-}
-
-int meshcore_node_binary_request_with_tag(const uint8_t *public_key,
-                                          const uint8_t *payload,
-                                          size_t payload_len,
-                                          uint32_t tag) {
+static int meshcore_node_binary_request_internal(
+    const uint8_t *public_key, const uint8_t *payload, size_t payload_len,
+    uint32_t tag) {
   int rc = meshcore_runtime_require_initialized();
   union meshcore_runtime_request_data data;
 
@@ -1282,6 +1313,21 @@ int meshcore_node_binary_request_with_tag(const uint8_t *public_key,
   data.node_binary.tag = tag;
   return meshcore_runtime_request_add(MESHCORE_RUNTIME_REQUEST_NODE_BINARY,
                                       &data);
+}
+
+int meshcore_node_binary_request(const uint8_t *public_key,
+                                 const uint8_t *payload,
+                                 size_t payload_len) {
+  return meshcore_node_binary_request_internal(public_key, payload, payload_len,
+                                               0U);
+}
+
+int meshcore_node_binary_request_with_tag(const uint8_t *public_key,
+                                          const uint8_t *payload,
+                                          size_t payload_len,
+                                          uint32_t tag) {
+  return meshcore_node_binary_request_internal(public_key, payload, payload_len,
+                                               tag);
 }
 
 int meshcore_node_anon_data_send(const uint8_t *public_key,
@@ -1336,7 +1382,8 @@ int meshcore_node_binary_response(
 }
 
 int meshcore_node_discover_request(uint8_t filter, bool prefix_only,
-                                   uint32_t since, uint32_t *request_tag) {
+                                   uint32_t since,
+                                   uint32_t *request_tag) {
   int rc = meshcore_runtime_require_initialized();
   union meshcore_runtime_request_data data;
   uint32_t tag = 0U;

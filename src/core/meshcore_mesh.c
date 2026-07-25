@@ -5,6 +5,7 @@
 
 #include "meshcore_mesh.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "meshcore_clock.h"
@@ -57,23 +58,6 @@ static struct meshcore_packet *meshcore_mesh_obtain_new_packet(
   }
 
   return meshcore_dispatcher_obtain_new_packet(&mesh->dispatcher);
-}
-
-static uint8_t meshcore_mesh_transport_flood_hash_size(uint8_t path_hash_size,
-                                                       const uint16_t transport_codes[2])
-{
-  uint8_t hash_size = path_hash_size;
-
-  if (transport_codes == NULL) {
-    return hash_size;
-  }
-  if (transport_codes[0] == MESHCORE_SNR_TRANSPORT_CODE0 &&
-      transport_codes[1] == MESHCORE_SNR_TRANSPORT_CODE1 &&
-      hash_size < 3U) {
-    hash_size = (uint8_t)(hash_size + 1U);
-  }
-
-  return hash_size;
 }
 
 static void meshcore_mesh_release_consumed_packet(struct meshcore_mesh *mesh,
@@ -1064,21 +1048,21 @@ struct meshcore_packet *meshcore_mesh_create_control_data(
   return packet;
 }
 
-void meshcore_mesh_send_flood(struct meshcore_mesh *mesh,
-                              struct meshcore_packet *packet,
-                              uint32_t delay_millis, uint8_t path_hash_size)
+int meshcore_mesh_send_flood(struct meshcore_mesh *mesh,
+                             struct meshcore_packet *packet,
+                             uint32_t delay_millis, uint8_t path_hash_size)
 {
   uint8_t pri;
   uint8_t type;
 
   if (mesh == NULL || packet == NULL) {
-    return;
+    return -EINVAL;
   }
 
   type = meshcore_packet_get_payload_type(packet);
   if (type == PAYLOAD_TYPE_TRACE || path_hash_size == 0U || path_hash_size > 3U) {
     meshcore_mesh_release_consumed_packet(mesh, packet);
-    return;
+    return -EINVAL;
   }
 
   packet->header &= (uint8_t)~PH_ROUTE_MASK;
@@ -1094,35 +1078,33 @@ void meshcore_mesh_send_flood(struct meshcore_mesh *mesh,
     pri = 1U;
   }
 
-  meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, pri, delay_millis);
+  return meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, pri,
+                                         delay_millis);
 }
 
-void meshcore_mesh_send_flood_by_transport_codes(
+int meshcore_mesh_send_flood_by_transport_codes(
     struct meshcore_mesh *mesh, struct meshcore_packet *packet,
     const uint16_t transport_codes[2], uint32_t delay_millis,
     uint8_t path_hash_size)
 {
   uint8_t pri;
   uint8_t type;
-  uint8_t hash_size;
-
   if (mesh == NULL || packet == NULL || transport_codes == NULL) {
     meshcore_mesh_release_consumed_packet(mesh, packet);
-    return;
+    return -EINVAL;
   }
 
   type = meshcore_packet_get_payload_type(packet);
   if (type == PAYLOAD_TYPE_TRACE || path_hash_size == 0U || path_hash_size > 3U) {
     meshcore_mesh_release_consumed_packet(mesh, packet);
-    return;
+    return -EINVAL;
   }
 
   packet->header &= (uint8_t)~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_TRANSPORT_FLOOD;
   packet->transport_codes[0] = transport_codes[0];
   packet->transport_codes[1] = transport_codes[1];
-  hash_size = meshcore_mesh_transport_flood_hash_size(path_hash_size, transport_codes);
-  meshcore_packet_set_path_hash_size_and_count(packet, hash_size, 0U);
+  meshcore_packet_set_path_hash_size_and_count(packet, path_hash_size, 0U);
   (void)meshcore_mesh_tables_has_seen(mesh, packet);
 
   if (type == PAYLOAD_TYPE_PATH) {
@@ -1133,20 +1115,21 @@ void meshcore_mesh_send_flood_by_transport_codes(
     pri = 1U;
   }
 
-  meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, pri, delay_millis);
+  return meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, pri,
+                                         delay_millis);
 }
 
-void meshcore_mesh_send_direct(struct meshcore_mesh *mesh,
-                               struct meshcore_packet *packet,
-                               const uint8_t *path, uint8_t path_len,
-                               uint32_t delay_millis)
+int meshcore_mesh_send_direct(struct meshcore_mesh *mesh,
+                              struct meshcore_packet *packet,
+                              const uint8_t *path, uint8_t path_len,
+                              uint32_t delay_millis)
 {
   uint8_t type;
   uint8_t pri;
 
   if (mesh == NULL || packet == NULL || (path == NULL && path_len > 0U)) {
     meshcore_mesh_release_consumed_packet(mesh, packet);
-    return;
+    return -EINVAL;
   }
 
   packet->header &= (uint8_t)~PH_ROUTE_MASK;
@@ -1156,7 +1139,7 @@ void meshcore_mesh_send_direct(struct meshcore_mesh *mesh,
   if (type == PAYLOAD_TYPE_TRACE) {
     if ((size_t)packet->payload_len + path_len > MESHCORE_PACKET_PAYLOAD_MAX_LEN) {
       meshcore_mesh_release_consumed_packet(mesh, packet);
-      return;
+      return -ENOBUFS;
     }
     memcpy(&packet->payload[packet->payload_len], path, path_len);
     packet->payload_len += path_len;
@@ -1168,31 +1151,33 @@ void meshcore_mesh_send_direct(struct meshcore_mesh *mesh,
   }
 
   (void)meshcore_mesh_tables_has_seen(mesh, packet);
-  meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, pri, delay_millis);
+  return meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, pri,
+                                         delay_millis);
 }
 
-void meshcore_mesh_send_zero_hop(struct meshcore_mesh *mesh,
-                                 struct meshcore_packet *packet,
-                                 uint32_t delay_millis)
+int meshcore_mesh_send_zero_hop(struct meshcore_mesh *mesh,
+                                struct meshcore_packet *packet,
+                                uint32_t delay_millis)
 {
   if (mesh == NULL || packet == NULL) {
-    return;
+    return -EINVAL;
   }
 
   packet->header &= (uint8_t)~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_DIRECT;
   packet->path_len = 0U;
   (void)meshcore_mesh_tables_has_seen(mesh, packet);
-  meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, 0U, delay_millis);
+  return meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, 0U,
+                                         delay_millis);
 }
 
-void meshcore_mesh_send_zero_hop_by_transport_codes(
+int meshcore_mesh_send_zero_hop_by_transport_codes(
     struct meshcore_mesh *mesh, struct meshcore_packet *packet,
     const uint16_t transport_codes[2], uint32_t delay_millis)
 {
   if (mesh == NULL || packet == NULL || transport_codes == NULL) {
     meshcore_mesh_release_consumed_packet(mesh, packet);
-    return;
+    return -EINVAL;
   }
 
   packet->header &= (uint8_t)~PH_ROUTE_MASK;
@@ -1201,7 +1186,8 @@ void meshcore_mesh_send_zero_hop_by_transport_codes(
   packet->transport_codes[1] = transport_codes[1];
   packet->path_len = 0U;
   (void)meshcore_mesh_tables_has_seen(mesh, packet);
-  meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, 0U, delay_millis);
+  return meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, 0U,
+                                         delay_millis);
 }
 
 bool meshcore_mesh_runtime_filter_recv_flood_packet(struct meshcore_mesh *mesh,

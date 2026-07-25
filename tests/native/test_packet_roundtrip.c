@@ -47,7 +47,7 @@ static void fill_incrementing(uint8_t *dest, size_t len, uint8_t base)
   }
 }
 
-static int test_utils_from_hex_rejects_invalid_input(void)
+static int test_utils_from_hex_matches_upstream_nibble_mapping(void)
 {
   uint8_t out[2] = {0xAAU, 0xAAU};
 
@@ -57,7 +57,12 @@ static int test_utils_from_hex_rejects_invalid_input(void)
 
   out[0] = 0xAAU;
   out[1] = 0xAAU;
-  NATIVE_TEST_ASSERT(!meshcore_utils_from_hex(out, sizeof(out), "00gg"));
+  NATIVE_TEST_ASSERT(meshcore_utils_from_hex(out, sizeof(out), "00gg"));
+  NATIVE_TEST_ASSERT_EQ(0x00U, out[0]);
+  NATIVE_TEST_ASSERT_EQ(0x00U, out[1]);
+  NATIVE_TEST_ASSERT(meshcore_utils_from_hex(out, sizeof(out), "0gA?"));
+  NATIVE_TEST_ASSERT_EQ(0x00U, out[0]);
+  NATIVE_TEST_ASSERT_EQ(0xA0U, out[1]);
   NATIVE_TEST_ASSERT(!meshcore_utils_from_hex(NULL, sizeof(out), "00ff"));
   NATIVE_TEST_ASSERT(!meshcore_utils_from_hex(out, -1, "00ff"));
   NATIVE_TEST_ASSERT(!meshcore_utils_from_hex(out, sizeof(out), NULL));
@@ -493,7 +498,8 @@ int main(void)
   NATIVE_TEST_ASSERT_EQ(sizeof(payload), parsed.payload_len);
   NATIVE_TEST_ASSERT(memcmp(parsed.payload, payload, sizeof(payload)) == 0);
 
-  NATIVE_TEST_ASSERT_EQ(0, test_utils_from_hex_rejects_invalid_input());
+  NATIVE_TEST_ASSERT_EQ(
+      0, test_utils_from_hex_matches_upstream_nibble_mapping());
   NATIVE_TEST_ASSERT_EQ(0, test_utils_crypto_and_text_helpers_match_promoted_contract());
   NATIVE_TEST_ASSERT_EQ(0, test_packet_hash_includes_payload_type_and_trace_path_len());
   NATIVE_TEST_ASSERT_EQ(0, test_identity_known_private_key_validates_and_signs());

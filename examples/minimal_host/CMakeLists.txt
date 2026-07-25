@@ -2,8 +2,16 @@ cmake_minimum_required(VERSION 3.20)
 
 project(meshcore_minimal_host LANGUAGES C)
 
+set(MESHCORE_FIND_VERSION "" CACHE STRING
+  "Optional minimum meshcore package version for standalone builds"
+)
+
 if(NOT TARGET meshcore::meshcore)
-  find_package(meshcore CONFIG REQUIRED)
+  if(MESHCORE_FIND_VERSION)
+    find_package(meshcore ${MESHCORE_FIND_VERSION} CONFIG REQUIRED)
+  else()
+    find_package(meshcore CONFIG REQUIRED)
+  endif()
 endif()
 
 #

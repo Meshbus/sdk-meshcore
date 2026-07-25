@@ -8,7 +8,10 @@
 #include <string.h>
 
 #include "meshcore_advert_data.h"
+#include "meshcore_mesh.h"
 #include "meshcore_packet.h"
+#include "meshcore_packet_manager.h"
+#include "meshcore_tables.h"
 
 /*
  * Layer 1 parity evidence:
@@ -123,6 +126,69 @@ static int test_packet_transport_code_serialization_is_little_endian(void)
   return 0;
 }
 
+static int test_transport_flood_hash_width_golden_vectors(void)
+{
+  const uint16_t transport_codes[][2] = {
+    {0x1234U, 0xABCDU},
+    {MESHCORE_SNR_TRANSPORT_CODE0, MESHCORE_SNR_TRANSPORT_CODE1},
+  };
+  size_t transport_idx;
+  uint8_t hash_size;
+
+  for (transport_idx = 0U;
+       transport_idx < sizeof(transport_codes) / sizeof(transport_codes[0]);
+       transport_idx++) {
+    for (hash_size = 1U; hash_size <= 3U; hash_size++) {
+      struct meshcore_packet_queue_manager manager;
+      struct meshcore_tables tables;
+      struct meshcore_mesh mesh;
+      struct meshcore_packet *packet;
+      struct meshcore_packet *queued;
+      uint8_t raw[MESHCORE_MAX_TRANS_UNIT_LEN];
+      uint8_t expected[7U];
+      uint8_t raw_len;
+
+      meshcore_packet_queue_manager_prepare(&manager, 2);
+      NATIVE_TEST_ASSERT(manager.initialized);
+      meshcore_tables_init(&tables);
+      meshcore_mesh_init(&mesh, &manager, &tables);
+
+      packet = meshcore_dispatcher_obtain_new_packet(&mesh.dispatcher);
+      NATIVE_TEST_ASSERT(packet != NULL);
+      packet->header = (uint8_t)(PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT);
+      packet->payload[0] = 0xA5U;
+      packet->payload_len = 1U;
+
+      NATIVE_TEST_ASSERT_EQ(
+          0, meshcore_mesh_send_flood_by_transport_codes(
+                 &mesh, packet, transport_codes[transport_idx], 0U,
+                 hash_size));
+      queued = meshcore_packet_queue_manager_get_outbound_by_idx(&manager, 0);
+      NATIVE_TEST_ASSERT(queued != NULL);
+      NATIVE_TEST_ASSERT_EQ(hash_size,
+                            meshcore_packet_get_path_hash_size(queued));
+
+      expected[0] = (uint8_t)((PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT) |
+                              ROUTE_TYPE_TRANSPORT_FLOOD);
+      expected[1] = (uint8_t)(transport_codes[transport_idx][0] & 0xFFU);
+      expected[2] =
+          (uint8_t)((transport_codes[transport_idx][0] >> 8) & 0xFFU);
+      expected[3] = (uint8_t)(transport_codes[transport_idx][1] & 0xFFU);
+      expected[4] =
+          (uint8_t)((transport_codes[transport_idx][1] >> 8) & 0xFFU);
+      expected[5] = (uint8_t)((hash_size - 1U) << 6);
+      expected[6] = 0xA5U;
+
+      raw_len = meshcore_packet_write_to(queued, raw);
+      NATIVE_TEST_ASSERT_EQ(sizeof(expected), raw_len);
+      NATIVE_TEST_ASSERT(memcmp(raw, expected, sizeof(expected)) == 0);
+      meshcore_packet_queue_manager_deinit(&manager);
+    }
+  }
+
+  return 0;
+}
+
 static int test_advert_data_golden_vector_and_parser_boundaries(void)
 {
   struct meshcore_advert_data_builder builder;
@@ -183,6 +249,7 @@ int main(void)
   NATIVE_TEST_ASSERT_EQ(0, test_public_payload_constants_match_packet_core());
   NATIVE_TEST_ASSERT_EQ(0, test_packet_path_length_boundaries_match_upstream_encoding());
   NATIVE_TEST_ASSERT_EQ(0, test_packet_transport_code_serialization_is_little_endian());
+  NATIVE_TEST_ASSERT_EQ(0, test_transport_flood_hash_width_golden_vectors());
   NATIVE_TEST_ASSERT_EQ(0, test_advert_data_golden_vector_and_parser_boundaries());
 
   return 0;

@@ -9,9 +9,9 @@ checks should verify.
 | Field | Value |
 | --- | --- |
 | Reference path | `.reference/meshcore` |
-| Commit | `e8d3c53ba1ea863937081cd0caad759b832f3028` |
-| Commit summary | `Merge pull request #2753 from formtapez/cli-docs` |
-| Nearest companion tag | `companion-v1.16.0-8-ge8d3c53b` |
+| Commit | `a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e` |
+| Commit summary | `Merge pull request #1865 from MeshEnvy/fix/python-json-parse-error` |
+| Nearest companion tag | `companion-v1.16.0-17-ga3a1aa5` |
 | Upstream license | MIT License; retained in `NOTICE` |
 
 `.reference/meshcore` is read-only evidence. Do not update it as part of a
@@ -31,8 +31,8 @@ To prepare the reference checkout in a fresh clone:
 ```sh
 mkdir -p .reference
 git clone https://github.com/meshcore-dev/MeshCore .reference/meshcore
-git -C .reference/meshcore fetch origin e8d3c53ba1ea863937081cd0caad759b832f3028
-git -C .reference/meshcore checkout --detach e8d3c53ba1ea863937081cd0caad759b832f3028
+git -C .reference/meshcore fetch origin a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
+git -C .reference/meshcore checkout --detach a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
 ```
 
 ## Evidence Classification

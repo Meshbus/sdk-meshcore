@@ -80,10 +80,10 @@ struct meshcore_packet *meshcore_dispatcher_obtain_new_packet(
     struct meshcore_dispatcher *dispatcher);
 void meshcore_dispatcher_release_packet(struct meshcore_dispatcher *dispatcher,
                                         struct meshcore_packet *packet);
-void meshcore_dispatcher_send_packet(struct meshcore_dispatcher *dispatcher,
-                                     struct meshcore_packet *packet,
-                                     uint8_t priority,
-                                     uint32_t delay_millis);
+int meshcore_dispatcher_send_packet(struct meshcore_dispatcher *dispatcher,
+                                    struct meshcore_packet *packet,
+                                    uint8_t priority,
+                                    uint32_t delay_millis);
 bool meshcore_dispatcher_next_deadline_get(
     const struct meshcore_dispatcher *dispatcher, uint32_t now,
     uint32_t *deadline_ms);

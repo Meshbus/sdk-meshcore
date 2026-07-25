@@ -216,10 +216,6 @@ bool meshcore_utils_from_hex(uint8_t *dest, int dest_size, const char *src_hex)
 		char ch = *src_hex++;
 		char cl = *src_hex++;
 
-		if (!meshcore_utils_is_hex_char(ch) ||
-		    !meshcore_utils_is_hex_char(cl)) {
-			return false;
-		}
 		*dp++ = (uint8_t)((hex_val(ch) << 4) | hex_val(cl));
 	}
 

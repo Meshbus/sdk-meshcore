@@ -288,7 +288,8 @@ static int test_runtime_apis_reject_invalid_arguments(void)
   NATIVE_TEST_ASSERT(meshcore_node_binary_response(&request, NULL,
                                                    MESHCORE_MAX_SERVICE_RESPONSE_PAYLOAD_LEN + 1U) < 0);
   request.tag = 0U;
-  NATIVE_TEST_ASSERT(meshcore_node_binary_response(&request, NULL, 0U) < 0);
+  NATIVE_TEST_ASSERT_EQ(0,
+                        meshcore_node_binary_response(&request, NULL, 0U));
 
   NATIVE_TEST_ASSERT(meshcore_node_discover_request(0U, false, 0U, &tag) < 0);
   NATIVE_TEST_ASSERT(meshcore_raw_data_send(NULL, 1U, s_payload, 1U) < 0);
@@ -501,7 +502,7 @@ static int test_runtime_peer_message_route_selection(void)
   NATIVE_TEST_ASSERT_EQ(0, init_runtime_for_api_test());
 
   meshcore_native_platform_peer_path_set(false, false, NULL,
-                                         MESHCORE_OUT_PATH_UNKNOWN, 1U);
+                                         0U, 1U);
   before_count = meshcore_native_platform_radio_send_count_get();
   NATIVE_TEST_ASSERT_EQ(0, meshcore_message_send_to_node(s_public_key, false,
                                                          0U, s_payload, 1U));
@@ -516,7 +517,7 @@ static int test_runtime_peer_message_route_selection(void)
                         meshcore_packet_get_route_type(&packet));
   NATIVE_TEST_ASSERT_EQ(0, complete_last_tx());
 
-  meshcore_native_platform_peer_path_set(true, false, peer_path,
+  meshcore_native_platform_peer_path_set(true, true, peer_path,
                                          sizeof(peer_path), 1U);
   before_count = meshcore_native_platform_radio_send_count_get();
   NATIVE_TEST_ASSERT_EQ(0, meshcore_message_send_to_node(s_public_key, false,

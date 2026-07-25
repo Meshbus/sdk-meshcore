@@ -30,6 +30,21 @@ def run(command: list[str], cwd: Path) -> None:
   subprocess.run(command, cwd=cwd, check=True)
 
 
+def run_expect_failure(command: list[str], cwd: Path) -> None:
+  print("+ " + " ".join(command) + " (expected failure)", flush=True)
+  result = subprocess.run(
+      command,
+      cwd=cwd,
+      check=False,
+      text=True,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+  )
+  if result.returncode == 0:
+    print(result.stdout, end="", file=sys.stderr)
+    raise RuntimeError("command unexpectedly succeeded")
+
+
 def find_minimal_host(consumer_build: Path) -> Path | None:
   names = ("meshcore_minimal_host", "meshcore_minimal_host.exe")
   for name in names:
@@ -49,6 +64,7 @@ def main() -> int:
   install_build = work_dir / "install-build"
   install_prefix = work_dir / "prefix"
   consumer_build = work_dir / "consumer-build"
+  incompatible_consumer_build = work_dir / "incompatible-consumer-build"
 
   if not (source_root / "CMakeLists.txt").is_file():
     print(f"missing MeshCore source root: {source_root}", file=sys.stderr)
@@ -90,6 +106,19 @@ def main() -> int:
           "-B",
           str(consumer_build),
           f"-DCMAKE_PREFIX_PATH={install_prefix}",
+          "-DMESHCORE_FIND_VERSION=0.2.0",
+      ],
+      source_root,
+  )
+  run_expect_failure(
+      [
+          args.cmake,
+          "-S",
+          str(source_root / "examples/minimal_host"),
+          "-B",
+          str(incompatible_consumer_build),
+          f"-DCMAKE_PREFIX_PATH={install_prefix}",
+          "-DMESHCORE_FIND_VERSION=0.1.0",
       ],
       source_root,
   )
@@ -118,6 +147,7 @@ def main() -> int:
     return 1
 
   print(result.stdout, end="")
+  print("package version compatibility: PASS (0.2 accepted, 0.1 rejected)")
   print(f"package smoke: PASS ({install_prefix})")
   return 0
 
