@@ -101,7 +101,7 @@ meshcore/
       packet, rng, utils, identity, clock, radio, dispatcher, mesh,
       group_channel
     support/
-      packet_manager, tables, advert_data, telemetry helpers, crypto
+      packet_manager, tables, advert_data, utf8, telemetry helpers, crypto
     runtime/
       meshcore.c                    lifecycle, event ingress, timer pump
       meshcore_runtime_control.c    zero-hop control request behavior
@@ -143,6 +143,7 @@ Layer 1 evidence comes from:
 - `.reference/meshcore/src/helpers/SimpleMeshTables.h`
 - `.reference/meshcore/src/helpers/AdvertDataHelpers.h`
 - `.reference/meshcore/src/helpers/AdvertDataHelpers.cpp`
+- `.reference/meshcore/src/helpers/UTF8Helpers.h`
 - `.reference/meshcore/src/helpers/TxtDataHelpers.h`
 - `.reference/meshcore/src/helpers/TxtDataHelpers.cpp`
 

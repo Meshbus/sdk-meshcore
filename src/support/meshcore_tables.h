@@ -30,8 +30,10 @@ struct meshcore_tables {
 };
 
 void meshcore_tables_init(struct meshcore_tables *tables);
-bool meshcore_tables_has_seen(struct meshcore_tables *tables,
+bool meshcore_tables_was_seen(struct meshcore_tables *tables,
                               const struct meshcore_packet *packet);
+void meshcore_tables_mark_seen(struct meshcore_tables *tables,
+                               const struct meshcore_packet *packet);
 void meshcore_tables_clear(struct meshcore_tables *tables,
                            const struct meshcore_packet *packet);
 uint32_t meshcore_tables_get_num_direct_dups(

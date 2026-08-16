@@ -25,16 +25,15 @@ For the current tree:
 
 | Field | Value |
 | --- | --- |
-| C package version | `0.2.0` |
-| Upstream evidence commit | `a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e` |
-| Nearest upstream companion tag | `companion-v1.16.0-17-ga3a1aa5` |
+| C package version | `0.3.0` |
+| Upstream evidence commit | `d92964352441e53b93e8667b802e04f6e072b39e` |
+| Nearest upstream companion tag | `companion-v1.17.1` |
 | Wire payload version | `PAYLOAD_VER_1`, encoded as `0x00` |
 | Host ABI version | `28` |
 
-This tuple is more precise than naming the C library `v1.16.0`. Upstream
-`companion-v1.16.0` is a firmware/application release line, not a standalone
-protocol or C ABI version. The current upstream evidence commit is also newer
-than that tag.
+This tuple is more precise than naming the C library `v1.17.1`. Upstream
+`companion-v1.17.1` is a firmware/application release line, not a standalone
+protocol or C ABI version.
 
 ## Git Tags
 
@@ -42,7 +41,7 @@ When the library is ready for a public release, tag the C package version with
 an annotated tag:
 
 ```sh
-git tag -a v0.2.0 -m "meshcore 0.2.0"
+git tag -a v0.3.0 -m "meshcore 0.3.0"
 ```
 
 Do not create a tag only because the upstream firmware version changed. Update
@@ -51,9 +50,9 @@ the upstream evidence lock and release notes instead.
 A release note should include the full compatibility tuple:
 
 ```text
-C library version: 0.2.0
-Upstream evidence: a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
-Nearest upstream tag: companion-v1.16.0-17-ga3a1aa5
+C library version: 0.3.0
+Upstream evidence: d92964352441e53b93e8667b802e04f6e072b39e
+Nearest upstream tag: companion-v1.17.1
 Wire compatibility: PAYLOAD_VER_1 / encoded 0x00
 Public ABI: 28
 ```

@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+#include "meshcore_utf8.h"
+
 static int32_t meshcore_advert_data_scale_coord(double value)
 {
   return (int32_t)(value * 1000000.0);
@@ -79,11 +81,13 @@ uint8_t meshcore_advert_data_builder_encode_to(
     i += (int)sizeof(builder->feat2);
   }
   if (builder->name != NULL && builder->name[0] != '\0') {
-    const char *sp = builder->name;
+    size_t name_len = meshcore_utf8_valid_prefix_length(
+        builder->name, MESHCORE_MAX_ADVERT_DATA_LEN - (size_t)i);
 
-    app_data[0] |= ADV_NAME_MASK;
-    while (*sp != '\0' && i < (int)MESHCORE_MAX_ADVERT_DATA_LEN) {
-      app_data[i++] = (uint8_t)*sp++;
+    if (name_len > 0U) {
+      app_data[0] |= ADV_NAME_MASK;
+      memcpy(&app_data[i], builder->name, name_len);
+      i += (int)name_len;
     }
   }
 

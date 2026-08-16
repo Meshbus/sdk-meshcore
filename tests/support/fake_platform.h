@@ -23,6 +23,9 @@ void meshcore_native_platform_peer_path_set(bool exists,
                                             const uint8_t *out_path,
                                             uint8_t out_path_byte_len,
                                             uint8_t path_hash_size);
+void meshcore_native_platform_peer_secret_set(bool exists,
+                                              const uint8_t *secret,
+                                              const uint8_t *public_key);
 void meshcore_native_platform_peer_path_error_set(int err_code);
 void meshcore_native_platform_channel_secret_match_set(bool exists);
 void meshcore_native_platform_node_name_set(const char *name);

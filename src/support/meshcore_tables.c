@@ -18,7 +18,7 @@ static void meshcore_tables_count_dup(
 	}
 }
 
-static bool meshcore_tables_has_seen_hash(
+static bool meshcore_tables_was_seen_hash(
 	struct meshcore_tables *tables,
 	const struct meshcore_packet *packet)
 {
@@ -35,10 +35,6 @@ static bool meshcore_tables_has_seen_hash(
 		}
 	}
 
-	memcpy(&tables->hashes[tables->next_idx * MESHCORE_PACKET_HASH_SIZE], hash,
-	       MESHCORE_PACKET_HASH_SIZE);
-	tables->next_idx =
-		(tables->next_idx + 1) % (int)MESHCORE_TABLES_MAX_PACKET_HASHES;
 	return false;
 }
 
@@ -51,14 +47,30 @@ void meshcore_tables_init(struct meshcore_tables *tables)
 	memset(tables, 0, sizeof(*tables));
 }
 
-bool meshcore_tables_has_seen(struct meshcore_tables *tables,
+bool meshcore_tables_was_seen(struct meshcore_tables *tables,
 			      const struct meshcore_packet *packet)
 {
 	if (tables == NULL || packet == NULL) {
 		return false;
 	}
 
-	return meshcore_tables_has_seen_hash(tables, packet);
+	return meshcore_tables_was_seen_hash(tables, packet);
+}
+
+void meshcore_tables_mark_seen(struct meshcore_tables *tables,
+			       const struct meshcore_packet *packet)
+{
+	uint8_t hash[MESHCORE_PACKET_HASH_SIZE];
+
+	if (tables == NULL || packet == NULL) {
+		return;
+	}
+
+	meshcore_packet_calculate_hash(packet, hash);
+	memcpy(&tables->hashes[tables->next_idx * MESHCORE_PACKET_HASH_SIZE], hash,
+	       MESHCORE_PACKET_HASH_SIZE);
+	tables->next_idx =
+		(tables->next_idx + 1) % (int)MESHCORE_TABLES_MAX_PACKET_HASHES;
 }
 
 void meshcore_tables_clear(struct meshcore_tables *tables,

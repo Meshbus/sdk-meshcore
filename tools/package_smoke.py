@@ -106,7 +106,7 @@ def main() -> int:
           "-B",
           str(consumer_build),
           f"-DCMAKE_PREFIX_PATH={install_prefix}",
-          "-DMESHCORE_FIND_VERSION=0.2.0",
+          "-DMESHCORE_FIND_VERSION=0.3.0",
       ],
       source_root,
   )
@@ -118,7 +118,7 @@ def main() -> int:
           "-B",
           str(incompatible_consumer_build),
           f"-DCMAKE_PREFIX_PATH={install_prefix}",
-          "-DMESHCORE_FIND_VERSION=0.1.0",
+          "-DMESHCORE_FIND_VERSION=0.2.0",
       ],
       source_root,
   )
@@ -147,7 +147,7 @@ def main() -> int:
     return 1
 
   print(result.stdout, end="")
-  print("package version compatibility: PASS (0.2 accepted, 0.1 rejected)")
+  print("package version compatibility: PASS (0.3 accepted, 0.2 rejected)")
   print(f"package smoke: PASS ({install_prefix})")
   return 0
 

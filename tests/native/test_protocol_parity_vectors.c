@@ -12,6 +12,7 @@
 #include "meshcore_packet.h"
 #include "meshcore_packet_manager.h"
 #include "meshcore_tables.h"
+#include "meshcore_utf8.h"
 
 /*
  * Layer 1 parity evidence:
@@ -19,6 +20,7 @@
  * - .reference/meshcore/src/Packet.cpp
  * - .reference/meshcore/src/helpers/AdvertDataHelpers.h
  * - .reference/meshcore/src/helpers/AdvertDataHelpers.cpp
+ * - .reference/meshcore/src/helpers/UTF8Helpers.h
  */
 
 static int test_public_payload_constants_match_packet_core(void)
@@ -244,6 +246,61 @@ static int test_advert_data_golden_vector_and_parser_boundaries(void)
   return 0;
 }
 
+static int test_utf8_advert_name_prefix_matches_upstream(void)
+{
+  static const char utf8_name[] =
+      "Example RPT "
+      "\xF0\x9F\x94\x8B"
+      "\xF0\x9F\x87\xB5\xF0\x9F\x87\xB1";
+  static const char expected_20[] =
+      "Example RPT "
+      "\xF0\x9F\x94\x8B"
+      "\xF0\x9F\x87\xB5";
+  static const char invalid_lead[] = {'A', (char)0xC0, (char)0x80, '\0'};
+  static const char overlong_three[] = {
+      'A', (char)0xE0, (char)0x80, (char)0x80, '\0'};
+  static const char surrogate[] = {
+      'A', (char)0xED, (char)0xA0, (char)0x80, '\0'};
+  static const char out_of_range[] = {
+      'A', (char)0xF4, (char)0x90, (char)0x80, (char)0x80, '\0'};
+  static const char incomplete[] = {
+      'A', (char)0xF0, (char)0x9F, (char)0x94, '\0'};
+  struct meshcore_advert_data_builder builder;
+  uint8_t encoded[MESHCORE_MAX_ADVERT_DATA_LEN];
+  uint8_t len;
+
+  NATIVE_TEST_ASSERT_EQ(24U,
+                        meshcore_utf8_valid_prefix_length(utf8_name, 24U));
+  NATIVE_TEST_ASSERT_EQ(20U,
+                        meshcore_utf8_valid_prefix_length(utf8_name, 23U));
+  NATIVE_TEST_ASSERT_EQ(1U,
+                        meshcore_utf8_valid_prefix_length(invalid_lead, 8U));
+  NATIVE_TEST_ASSERT_EQ(
+      1U, meshcore_utf8_valid_prefix_length(overlong_three, 8U));
+  NATIVE_TEST_ASSERT_EQ(1U,
+                        meshcore_utf8_valid_prefix_length(surrogate, 8U));
+  NATIVE_TEST_ASSERT_EQ(
+      1U, meshcore_utf8_valid_prefix_length(out_of_range, 8U));
+  NATIVE_TEST_ASSERT_EQ(1U,
+                        meshcore_utf8_valid_prefix_length(incomplete, 8U));
+
+  meshcore_advert_data_builder_init_with_name_lat_lon(
+      &builder, ADV_TYPE_CHAT, utf8_name, 1.0, 2.0);
+  len = meshcore_advert_data_builder_encode_to(&builder, encoded);
+  NATIVE_TEST_ASSERT_EQ(9U + sizeof(expected_20) - 1U, len);
+  NATIVE_TEST_ASSERT((encoded[0] & ADV_NAME_MASK) != 0U);
+  NATIVE_TEST_ASSERT(memcmp(&encoded[9], expected_20,
+                            sizeof(expected_20) - 1U) == 0);
+
+  meshcore_advert_data_builder_init_with_name(&builder, ADV_TYPE_CHAT,
+                                              &invalid_lead[1]);
+  len = meshcore_advert_data_builder_encode_to(&builder, encoded);
+  NATIVE_TEST_ASSERT_EQ(1U, len);
+  NATIVE_TEST_ASSERT((encoded[0] & ADV_NAME_MASK) == 0U);
+
+  return 0;
+}
+
 int main(void)
 {
   NATIVE_TEST_ASSERT_EQ(0, test_public_payload_constants_match_packet_core());
@@ -251,6 +308,7 @@ int main(void)
   NATIVE_TEST_ASSERT_EQ(0, test_packet_transport_code_serialization_is_little_endian());
   NATIVE_TEST_ASSERT_EQ(0, test_transport_flood_hash_width_golden_vectors());
   NATIVE_TEST_ASSERT_EQ(0, test_advert_data_golden_vector_and_parser_boundaries());
+  NATIVE_TEST_ASSERT_EQ(0, test_utf8_advert_name_prefix_matches_upstream());
 
   return 0;
 }

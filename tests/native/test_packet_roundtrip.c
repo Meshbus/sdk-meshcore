@@ -4,6 +4,7 @@
  */
 
 #include "native_test.h"
+#include "fake_platform.h"
 
 #include <string.h>
 
@@ -45,6 +46,33 @@ static void fill_incrementing(uint8_t *dest, size_t len, uint8_t base)
   for (i = 0U; i < len; i++) {
     dest[i] = (uint8_t)(base + i);
   }
+}
+
+struct peer_path_probe {
+  unsigned int count;
+  uint8_t path_len;
+};
+
+static bool peer_path_probe_recv(
+    void *user_data, struct meshcore_mesh *mesh,
+    struct meshcore_packet *packet,
+    const struct meshcore_common_peer_identity *sender,
+    const uint8_t *secret, uint8_t *path, uint8_t path_len,
+    uint8_t extra_type, uint8_t *extra, uint8_t extra_len)
+{
+  struct peer_path_probe *probe = user_data;
+
+  (void)mesh;
+  (void)packet;
+  (void)sender;
+  (void)secret;
+  (void)path;
+  (void)extra_type;
+  (void)extra;
+  (void)extra_len;
+  probe->count++;
+  probe->path_len = path_len;
+  return false;
 }
 
 static int test_utils_from_hex_matches_upstream_nibble_mapping(void)
@@ -278,19 +306,85 @@ static int test_tables_hash_ack_packets_by_full_payload(void)
   memcpy(packet.payload, ack, sizeof(ack));
   packet.payload_len = sizeof(ack);
 
-  NATIVE_TEST_ASSERT(!meshcore_tables_has_seen(&tables, &packet));
+  NATIVE_TEST_ASSERT(!meshcore_tables_was_seen(&tables, &packet));
+  NATIVE_TEST_ASSERT_EQ(0, tables.next_idx);
+  meshcore_tables_mark_seen(&tables, &packet);
   NATIVE_TEST_ASSERT_EQ(1, tables.next_idx);
-  NATIVE_TEST_ASSERT(meshcore_tables_has_seen(&tables, &packet));
+  NATIVE_TEST_ASSERT(meshcore_tables_was_seen(&tables, &packet));
   NATIVE_TEST_ASSERT_EQ(1U, meshcore_tables_get_num_direct_dups(&tables));
 
   ack[5] ^= 0x01U;
   memcpy(packet.payload, ack, sizeof(ack));
-  NATIVE_TEST_ASSERT(!meshcore_tables_has_seen(&tables, &packet));
+  NATIVE_TEST_ASSERT(!meshcore_tables_was_seen(&tables, &packet));
+  NATIVE_TEST_ASSERT_EQ(1, tables.next_idx);
+  meshcore_tables_mark_seen(&tables, &packet);
   NATIVE_TEST_ASSERT_EQ(2, tables.next_idx);
 
   meshcore_tables_clear(&tables, &packet);
-  NATIVE_TEST_ASSERT(!meshcore_tables_has_seen(&tables, &packet));
+  NATIVE_TEST_ASSERT(!meshcore_tables_was_seen(&tables, &packet));
 
+  return 0;
+}
+
+static int test_mesh_rejects_bad_decrypted_path_length(void)
+{
+  static const struct meshcore_mesh_runtime_ops runtime_ops = {
+      .on_peer_path_recv = peer_path_probe_recv,
+  };
+  struct meshcore_packet_queue_manager manager;
+  struct meshcore_tables tables;
+  struct meshcore_mesh mesh;
+  struct meshcore_packet packet;
+  struct peer_path_probe probe = {0};
+  uint8_t self_public_key[MESHCORE_PUBLIC_KEY_SIZE];
+  uint8_t peer_public_key[MESHCORE_PUBLIC_KEY_SIZE];
+  uint8_t secret[MESHCORE_PUBLIC_KEY_SIZE];
+  uint8_t self_hash[MESHCORE_CHANNEL_HASH_BYTES];
+  uint8_t invalid_plain[] = {0xC0U, 0x00U};
+  uint8_t valid_plain[] = {0x01U, 0x52U, 0x00U};
+  int encrypted_len;
+
+  fill_incrementing(self_public_key, sizeof(self_public_key), 0x20U);
+  fill_incrementing(peer_public_key, sizeof(peer_public_key), 0x60U);
+  fill_incrementing(secret, sizeof(secret), 0xA0U);
+  meshcore_native_platform_reset();
+  meshcore_native_platform_peer_secret_set(true, secret, peer_public_key);
+  meshcore_packet_queue_manager_prepare(&manager, 4);
+  meshcore_tables_init(&tables);
+  meshcore_mesh_init(&mesh, &manager, &tables);
+  meshcore_mesh_set_runtime_ops(&mesh, &runtime_ops, &probe);
+  meshcore_identity_init_from_pub_key(&mesh.self_id.identity, self_public_key);
+  meshcore_identity_copy_hash_to(&mesh.self_id.identity, self_hash);
+
+  meshcore_packet_init(&packet);
+  packet.header = (uint8_t)((PAYLOAD_TYPE_PATH << PH_TYPE_SHIFT) |
+                            ROUTE_TYPE_FLOOD);
+  packet.payload[0] = self_hash[0];
+  packet.payload[1] = peer_public_key[0];
+  encrypted_len = meshcore_utils_encrypt_then_mac(
+      secret, &packet.payload[2], invalid_plain, sizeof(invalid_plain));
+  NATIVE_TEST_ASSERT(encrypted_len > 0);
+  packet.payload_len = (uint16_t)(2 + encrypted_len);
+  NATIVE_TEST_ASSERT_EQ(MESHCORE_ACTION_RELEASE,
+                        meshcore_mesh_on_recv_packet(&mesh, &packet));
+  NATIVE_TEST_ASSERT_EQ(0U, probe.count);
+
+  meshcore_tables_init(&tables);
+  meshcore_packet_init(&packet);
+  packet.header = (uint8_t)((PAYLOAD_TYPE_PATH << PH_TYPE_SHIFT) |
+                            ROUTE_TYPE_FLOOD);
+  packet.payload[0] = self_hash[0];
+  packet.payload[1] = peer_public_key[0];
+  encrypted_len = meshcore_utils_encrypt_then_mac(
+      secret, &packet.payload[2], valid_plain, sizeof(valid_plain));
+  NATIVE_TEST_ASSERT(encrypted_len > 0);
+  packet.payload_len = (uint16_t)(2 + encrypted_len);
+  NATIVE_TEST_ASSERT_EQ(MESHCORE_ACTION_RELEASE,
+                        meshcore_mesh_on_recv_packet(&mesh, &packet));
+  NATIVE_TEST_ASSERT_EQ(1U, probe.count);
+  NATIVE_TEST_ASSERT_EQ(0x01U, probe.path_len);
+
+  meshcore_packet_queue_manager_deinit(&manager);
   return 0;
 }
 
@@ -505,6 +599,7 @@ int main(void)
   NATIVE_TEST_ASSERT_EQ(0, test_identity_known_private_key_validates_and_signs());
   NATIVE_TEST_ASSERT_EQ(0, test_identity_hex_hash_shared_secret_and_storage_roundtrip());
   NATIVE_TEST_ASSERT_EQ(0, test_tables_hash_ack_packets_by_full_payload());
+  NATIVE_TEST_ASSERT_EQ(0, test_mesh_rejects_bad_decrypted_path_length());
   NATIVE_TEST_ASSERT_EQ(0, test_mesh_peer_datagram_boundary_matches_upstream_precheck());
   NATIVE_TEST_ASSERT_EQ(0, test_mesh_ack_helpers_preserve_payload_length());
   NATIVE_TEST_ASSERT_EQ(0, test_mesh_packet_builders_cover_required_payload_types());

@@ -7,7 +7,7 @@ This C library implements MeshCore protocol and runtime behavior using the
 upstream MeshCore project as API and runtime evidence:
 
   https://github.com/meshcore-dev/MeshCore
-  Reference commit: a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
+  Reference commit: d92964352441e53b93e8667b802e04f6e072b39e
 
 Where portions of this library are derived from or translated from upstream
 MeshCore, the following upstream MIT notice is retained:

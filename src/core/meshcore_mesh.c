@@ -40,14 +40,24 @@ static uint32_t meshcore_mesh_rtc_get_current_time(struct meshcore_mesh *mesh)
   return meshcore_clock_rtc_get_current_time();
 }
 
-static bool meshcore_mesh_tables_has_seen(struct meshcore_mesh *mesh,
+static bool meshcore_mesh_tables_was_seen(struct meshcore_mesh *mesh,
                                           const struct meshcore_packet *packet)
 {
   if (mesh == NULL || packet == NULL || mesh->tables == NULL) {
     return false;
   }
 
-  return meshcore_tables_has_seen(mesh->tables, packet);
+  return meshcore_tables_was_seen(mesh->tables, packet);
+}
+
+static void meshcore_mesh_tables_mark_seen(
+    struct meshcore_mesh *mesh, const struct meshcore_packet *packet)
+{
+  if (mesh == NULL || packet == NULL || mesh->tables == NULL) {
+    return;
+  }
+
+  meshcore_tables_mark_seen(mesh->tables, packet);
 }
 
 static struct meshcore_packet *meshcore_mesh_obtain_new_packet(
@@ -155,7 +165,8 @@ static meshcore_dispatcher_action meshcore_mesh_forward_multipart_direct(
     tmp.payload_len = (uint16_t)(packet->payload_len - 1U);
     memcpy(tmp.payload, &packet->payload[1], tmp.payload_len);
 
-    if (!meshcore_mesh_tables_has_seen(mesh, &tmp)) {
+    if (!meshcore_mesh_tables_was_seen(mesh, &tmp)) {
+      meshcore_mesh_tables_mark_seen(mesh, &tmp);
       meshcore_mesh_remove_self_from_path(&tmp);
       meshcore_mesh_route_direct_recv_acks(mesh, &tmp,
                                            ((uint32_t)remaining + 1U) * 300U);
@@ -261,7 +272,8 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
                      &mesh->self_id.identity, &packet->payload[i + offset],
                      (uint8_t)(1U << path_sz)) &&
                  meshcore_mesh_runtime_allow_packet_forward(mesh, packet) &&
-                 !meshcore_mesh_tables_has_seen(mesh, packet)) {
+                 !meshcore_mesh_tables_was_seen(mesh, packet)) {
+        meshcore_mesh_tables_mark_seen(mesh, packet);
         packet->path[packet->path_len++] = (int8_t)(meshcore_packet_get_snr(packet) * 4.0f);
         delay = meshcore_mesh_runtime_get_direct_retransmit_delay(mesh, packet);
         return MESHCORE_ACTION_RETRANSMIT_DELAYED(5U, delay);
@@ -294,14 +306,16 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
         return meshcore_mesh_forward_multipart_direct(mesh, packet);
       }
       if (payload_type == PAYLOAD_TYPE_ACK) {
-        if (!meshcore_mesh_tables_has_seen(mesh, packet)) {
+        if (!meshcore_mesh_tables_was_seen(mesh, packet)) {
+          meshcore_mesh_tables_mark_seen(mesh, packet);
           meshcore_mesh_remove_self_from_path(packet);
           meshcore_mesh_route_direct_recv_acks(mesh, packet, 0U);
         }
         return MESHCORE_ACTION_RELEASE;
       }
 
-      if (!meshcore_mesh_tables_has_seen(mesh, packet)) {
+      if (!meshcore_mesh_tables_was_seen(mesh, packet)) {
+        meshcore_mesh_tables_mark_seen(mesh, packet);
         meshcore_mesh_remove_self_from_path(packet);
         delay = meshcore_mesh_runtime_get_direct_retransmit_delay(mesh, packet);
         return MESHCORE_ACTION_RETRANSMIT_DELAYED(0U, delay);
@@ -321,7 +335,8 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
         break;
       }
       memcpy(&ack_crc, packet->payload, sizeof(ack_crc));
-      if (!meshcore_mesh_tables_has_seen(mesh, packet)) {
+      if (!meshcore_mesh_tables_was_seen(mesh, packet)) {
+        meshcore_mesh_tables_mark_seen(mesh, packet);
         meshcore_mesh_runtime_on_ack_recv(mesh, packet, ack_crc);
         action = meshcore_mesh_route_recv_packet(mesh, packet);
       }
@@ -346,7 +361,8 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
         break;
       }
 
-      if (!meshcore_mesh_tables_has_seen(mesh, packet)) {
+      if (!meshcore_mesh_tables_was_seen(mesh, packet)) {
+        meshcore_mesh_tables_mark_seen(mesh, packet);
         if (meshcore_identity_is_hash_match(&mesh->self_id.identity, &dest_hash)) {
           size_t cursor = 0U;
           size_t sender_slot = 0U;
@@ -381,6 +397,9 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
               }
 
               path_len = data[k++];
+              if (!meshcore_packet_is_valid_path_len(path_len)) {
+                break;
+              }
               hash_size = (uint8_t)((path_len >> 6) + 1U);
               hash_count = path_len & 63U;
               if (k + hash_size * hash_count + 1 > len) {
@@ -442,7 +461,8 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
         break;
       }
 
-      if (!meshcore_mesh_tables_has_seen(mesh, packet)) {
+      if (!meshcore_mesh_tables_was_seen(mesh, packet)) {
+        meshcore_mesh_tables_mark_seen(mesh, packet);
         if (meshcore_identity_is_hash_match(&mesh->self_id.identity, &dest_hash)) {
           struct meshcore_identity sender;
           uint8_t secret[MESHCORE_PUBLIC_KEY_SIZE];
@@ -480,7 +500,8 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
         break;
       }
 
-      if (!meshcore_mesh_tables_has_seen(mesh, packet)) {
+      if (!meshcore_mesh_tables_was_seen(mesh, packet)) {
+        meshcore_mesh_tables_mark_seen(mesh, packet);
         struct meshcore_group_channel channels[4];
         int num = meshcore_mesh_runtime_search_channels_by_hash(mesh, &channel_hash, channels,
                                                         4);
@@ -528,7 +549,8 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
         break;
       }
 
-      if (!meshcore_mesh_tables_has_seen(mesh, packet)) {
+      if (!meshcore_mesh_tables_was_seen(mesh, packet)) {
+        meshcore_mesh_tables_mark_seen(mesh, packet);
         uint8_t *app_data = &packet->payload[i];
         int app_data_len = (int)(packet->payload_len - i);
         bool is_ok;
@@ -560,7 +582,8 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
     }
     case PAYLOAD_TYPE_RAW_CUSTOM:
       if (meshcore_packet_is_route_direct(packet) &&
-          !meshcore_mesh_tables_has_seen(mesh, packet)) {
+          !meshcore_mesh_tables_was_seen(mesh, packet)) {
+        meshcore_mesh_tables_mark_seen(mesh, packet);
         meshcore_mesh_runtime_on_raw_data_recv(mesh, packet);
       }
       break;
@@ -580,10 +603,12 @@ meshcore_dispatcher_action meshcore_mesh_on_recv_packet(
           tmp.payload_len = (uint16_t)(packet->payload_len - 1U);
           memcpy(tmp.payload, &packet->payload[1], tmp.payload_len);
 
-          if (!meshcore_mesh_tables_has_seen(mesh, &tmp) &&
-              tmp.payload_len >= sizeof(ack_crc)) {
-            memcpy(&ack_crc, tmp.payload, sizeof(ack_crc));
-            meshcore_mesh_runtime_on_ack_recv(mesh, &tmp, ack_crc);
+          if (!meshcore_mesh_tables_was_seen(mesh, &tmp)) {
+            meshcore_mesh_tables_mark_seen(mesh, &tmp);
+            if (tmp.payload_len >= sizeof(ack_crc)) {
+              memcpy(&ack_crc, tmp.payload, sizeof(ack_crc));
+              meshcore_mesh_runtime_on_ack_recv(mesh, &tmp, ack_crc);
+            }
           }
         }
       }
@@ -1068,7 +1093,7 @@ int meshcore_mesh_send_flood(struct meshcore_mesh *mesh,
   packet->header &= (uint8_t)~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_FLOOD;
   meshcore_packet_set_path_hash_size_and_count(packet, path_hash_size, 0U);
-  (void)meshcore_mesh_tables_has_seen(mesh, packet);
+  meshcore_mesh_tables_mark_seen(mesh, packet);
 
   if (type == PAYLOAD_TYPE_PATH) {
     pri = 2U;
@@ -1105,7 +1130,7 @@ int meshcore_mesh_send_flood_by_transport_codes(
   packet->transport_codes[0] = transport_codes[0];
   packet->transport_codes[1] = transport_codes[1];
   meshcore_packet_set_path_hash_size_and_count(packet, path_hash_size, 0U);
-  (void)meshcore_mesh_tables_has_seen(mesh, packet);
+  meshcore_mesh_tables_mark_seen(mesh, packet);
 
   if (type == PAYLOAD_TYPE_PATH) {
     pri = 2U;
@@ -1150,7 +1175,7 @@ int meshcore_mesh_send_direct(struct meshcore_mesh *mesh,
     pri = (type == PAYLOAD_TYPE_PATH) ? 1U : 0U;
   }
 
-  (void)meshcore_mesh_tables_has_seen(mesh, packet);
+  meshcore_mesh_tables_mark_seen(mesh, packet);
   return meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, pri,
                                          delay_millis);
 }
@@ -1166,7 +1191,7 @@ int meshcore_mesh_send_zero_hop(struct meshcore_mesh *mesh,
   packet->header &= (uint8_t)~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_DIRECT;
   packet->path_len = 0U;
-  (void)meshcore_mesh_tables_has_seen(mesh, packet);
+  meshcore_mesh_tables_mark_seen(mesh, packet);
   return meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, 0U,
                                          delay_millis);
 }
@@ -1185,7 +1210,7 @@ int meshcore_mesh_send_zero_hop_by_transport_codes(
   packet->transport_codes[0] = transport_codes[0];
   packet->transport_codes[1] = transport_codes[1];
   packet->path_len = 0U;
-  (void)meshcore_mesh_tables_has_seen(mesh, packet);
+  meshcore_mesh_tables_mark_seen(mesh, packet);
   return meshcore_dispatcher_send_packet(&mesh->dispatcher, packet, 0U,
                                          delay_millis);
 }

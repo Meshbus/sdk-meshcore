@@ -24,6 +24,7 @@ ORACLE_SOURCE = r'''
 #include "Packet.h"
 #include "helpers/AdvertDataHelpers.h"
 #include "helpers/TxtDataHelpers.h"
+#include "helpers/UTF8Helpers.h"
 
 enum {
   UP_PH_TYPE_SHIFT = PH_TYPE_SHIFT,
@@ -94,6 +95,7 @@ extern "C" {
 #include "meshcore_packet.h"
 #include "meshcore_advert_data.h"
 #include "meshcore_txt_data.h"
+#include "meshcore_utf8.h"
 }
 
 static void require_true(bool condition, const char *message) {
@@ -219,6 +221,54 @@ static void compare_advert_build_parse(void) {
   require_true(std::strcmp(meshcore_advert_data_parser_get_name(&c_parser),
                            upstream_parser.getName()) == 0,
                "advert name parity");
+}
+
+static void compare_utf8_prefixes(void) {
+  const char utf8_name[] =
+      "Example RPT "
+      "\xF0\x9F\x94\x8B"
+      "\xF0\x9F\x87\xB5\xF0\x9F\x87\xB1";
+  const char invalid_lead[] = {'A', static_cast<char>(0xC0),
+                               static_cast<char>(0x80), '\0'};
+  const char overlong_three[] = {
+      'A', static_cast<char>(0xE0), static_cast<char>(0x80),
+      static_cast<char>(0x80), '\0'};
+  const char surrogate[] = {
+      'A', static_cast<char>(0xED), static_cast<char>(0xA0),
+      static_cast<char>(0x80), '\0'};
+  const char out_of_range[] = {
+      'A', static_cast<char>(0xF4), static_cast<char>(0x90),
+      static_cast<char>(0x80), static_cast<char>(0x80), '\0'};
+  const char incomplete[] = {
+      'A', static_cast<char>(0xF0), static_cast<char>(0x9F),
+      static_cast<char>(0x94), '\0'};
+  struct Case {
+    const char *text;
+    size_t max_bytes;
+  } cases[] = {
+      {utf8_name, 24U},
+      {utf8_name, 23U},
+      {invalid_lead, 8U},
+      {overlong_three, 8U},
+      {surrogate, 8U},
+      {out_of_range, 8U},
+      {incomplete, 8U},
+      {nullptr, 8U},
+  };
+
+  for (const auto &test_case : cases) {
+    size_t upstream =
+        mesh::validUtf8PrefixLength(test_case.text, test_case.max_bytes);
+    size_t c_impl = meshcore_utf8_valid_prefix_length(test_case.text,
+                                                       test_case.max_bytes);
+    require_eq_u32(static_cast<uint32_t>(c_impl),
+                   static_cast<uint32_t>(upstream),
+                   "UTF-8 prefix length parity");
+  }
+  require_eq_u32(meshcore_utf8_valid_prefix_length(utf8_name, 24U), 24U,
+                 "UTF-8 complete name boundary");
+  require_eq_u32(meshcore_utf8_valid_prefix_length(utf8_name, 23U), 20U,
+                 "UTF-8 truncated name boundary");
 }
 
 static void compare_identity_helpers(void) {
@@ -355,6 +405,7 @@ int main(void) {
   compare_packet_path_lengths();
   compare_packet_write_read();
   compare_advert_build_parse();
+  compare_utf8_prefixes();
   compare_identity_helpers();
   compare_txt_helpers();
   std::puts("upstream oracle parity checks passed");

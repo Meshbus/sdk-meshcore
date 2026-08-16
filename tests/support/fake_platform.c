@@ -57,6 +57,9 @@ static int s_last_request_error;
 static bool s_peer_path_exists;
 static int s_peer_path_error;
 static meshcore_common_peer_path_t s_peer_path;
+static bool s_peer_secret_exists;
+static uint8_t s_peer_secret[MESHCORE_PUBLIC_KEY_SIZE];
+static uint8_t s_peer_public_key[MESHCORE_PUBLIC_KEY_SIZE];
 static bool s_channel_secret_match;
 static bool s_identity_get_fail;
 static bool s_timer_arm_fail;
@@ -101,6 +104,9 @@ void meshcore_native_platform_reset(void)
   s_peer_path_error = 0;
   memset(&s_peer_path, 0, sizeof(s_peer_path));
   s_peer_path.path_hash_size = 1U;
+  s_peer_secret_exists = false;
+  memset(s_peer_secret, 0, sizeof(s_peer_secret));
+  memset(s_peer_public_key, 0, sizeof(s_peer_public_key));
   s_channel_secret_match = true;
   s_identity_get_fail = false;
   s_timer_arm_fail = false;
@@ -166,6 +172,21 @@ void meshcore_native_platform_peer_path_set(bool exists,
   if (out_path != NULL &&
       out_path_byte_len <= sizeof(s_peer_path.out_path)) {
     memcpy(s_peer_path.out_path, out_path, out_path_byte_len);
+  }
+}
+
+void meshcore_native_platform_peer_secret_set(bool exists,
+                                              const uint8_t *secret,
+                                              const uint8_t *public_key)
+{
+  s_peer_secret_exists = exists;
+  memset(s_peer_secret, 0, sizeof(s_peer_secret));
+  memset(s_peer_public_key, 0, sizeof(s_peer_public_key));
+  if (secret != NULL) {
+    memcpy(s_peer_secret, secret, sizeof(s_peer_secret));
+  }
+  if (public_key != NULL) {
+    memcpy(s_peer_public_key, public_key, sizeof(s_peer_public_key));
   }
 }
 
@@ -652,13 +673,21 @@ int meshcore_platform_peer_next_shared_secret_by_hash(
     uint8_t *dest_secret, meshcore_common_peer_identity_t *peer_identity)
 {
   (void)hash;
-  (void)start_slot;
   if (slot_id == NULL || dest_secret == NULL || peer_identity == NULL) {
     return -EINVAL;
   }
-  memset(dest_secret, 0, MESHCORE_CHANNEL_SECRET_MAX_LEN);
+  if (!s_peer_secret_exists || start_slot > 0U) {
+    memset(dest_secret, 0, MESHCORE_CHANNEL_SECRET_MAX_LEN);
+    memset(peer_identity, 0, sizeof(*peer_identity));
+    return -ENOENT;
+  }
+
+  *slot_id = 0U;
+  memcpy(dest_secret, s_peer_secret, sizeof(s_peer_secret));
   memset(peer_identity, 0, sizeof(*peer_identity));
-  return -ENOENT;
+  memcpy(peer_identity->public_key, s_peer_public_key,
+         sizeof(peer_identity->public_key));
+  return 0;
 }
 
 int meshcore_platform_channel_secret_match_exists(uint8_t channel_hash,

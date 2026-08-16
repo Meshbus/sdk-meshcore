@@ -145,7 +145,7 @@ The following upstream surfaces are Layer 1 inputs.
 | `mesh` | `.reference/meshcore/src/Mesh.h`, `.reference/meshcore/src/Mesh.cpp` | Mesh packet construction, flood/direct routing, decrypt/dispatch, path handling, callbacks to runtime/PAL. |
 | `tables` | `.reference/meshcore/src/Mesh.h`, `.reference/meshcore/src/Mesh.cpp`, `.reference/meshcore/src/helpers/SimpleMeshTables.h` | Support module for peer/channel lookup semantics and minimal table behavior required by protocol logic. |
 | `group_channel` | `.reference/meshcore/src/Mesh.h`, `.reference/meshcore/src/Mesh.cpp` | Channel secret/hash data shape and group payload matching semantics. |
-| `advert_data` | `.reference/meshcore/src/helpers/AdvertDataHelpers.h`, `.reference/meshcore/src/helpers/AdvertDataHelpers.cpp` | Support module for builder/parser behavior for advert application data. |
+| `advert_data` | `.reference/meshcore/src/helpers/AdvertDataHelpers.h`, `.reference/meshcore/src/helpers/AdvertDataHelpers.cpp`, `.reference/meshcore/src/helpers/UTF8Helpers.h` | Support module for builder/parser behavior and UTF-8-safe advert-name truncation. |
 | `text_data` | `.reference/meshcore/src/helpers/TxtDataHelpers.h`, `.reference/meshcore/src/helpers/TxtDataHelpers.cpp` | Support/runtime evidence for TXT/GRP wire text behavior used by runtime messages. |
 
 ### Layer 1 Boundary

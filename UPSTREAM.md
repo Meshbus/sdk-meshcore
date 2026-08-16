@@ -9,9 +9,9 @@ checks should verify.
 | Field | Value |
 | --- | --- |
 | Reference path | `.reference/meshcore` |
-| Commit | `a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e` |
-| Commit summary | `Merge pull request #1865 from MeshEnvy/fix/python-json-parse-error` |
-| Nearest companion tag | `companion-v1.16.0-17-ga3a1aa5` |
+| Commit | `d92964352441e53b93e8667b802e04f6e072b39e` |
+| Commit summary | `* version 1.17.1` |
+| Nearest companion tag | `companion-v1.17.1` |
 | Upstream license | MIT License; retained in `NOTICE` |
 
 `.reference/meshcore` is read-only evidence. Do not update it as part of a
@@ -31,8 +31,8 @@ To prepare the reference checkout in a fresh clone:
 ```sh
 mkdir -p .reference
 git clone https://github.com/meshcore-dev/MeshCore .reference/meshcore
-git -C .reference/meshcore fetch origin a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
-git -C .reference/meshcore checkout --detach a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
+git -C .reference/meshcore fetch origin d92964352441e53b93e8667b802e04f6e072b39e
+git -C .reference/meshcore checkout --detach d92964352441e53b93e8667b802e04f6e072b39e
 ```
 
 ## Evidence Classification
@@ -66,6 +66,7 @@ or generic data structure semantics:
 - `.reference/meshcore/src/helpers/SimpleMeshTables.h`
 - `.reference/meshcore/src/helpers/AdvertDataHelpers.h`
 - `.reference/meshcore/src/helpers/AdvertDataHelpers.cpp`
+- `.reference/meshcore/src/helpers/UTF8Helpers.h`
 - `.reference/meshcore/src/helpers/TxtDataHelpers.h`
 - `.reference/meshcore/src/helpers/TxtDataHelpers.cpp`
 
@@ -104,6 +105,12 @@ explicit future promotion:
 - sensor manager implementations except for wire payload helpers that are
   explicitly promoted;
 - example application UI and persistence flows.
+
+The `v1.17.1` sync keeps `src/helpers/RoutingPolicy.h`, anonymous-contact slot
+management in `BaseChatMesh`, and application-specific `ANON_REQ` reply-path
+parsing on the host/runtime-evidence side of this boundary. CAD enablement,
+RadioLib collision handling, nRF crypto acceleration, FEM configuration, and
+board changes remain platform or excluded evidence.
 
 ## Sync Rule
 

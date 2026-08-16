@@ -4,8 +4,8 @@
 # extra dependencies. Paths are relative to the MeshCore repository root.
 
 reference_path=.reference/meshcore
-commit=a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
-description=Merge pull request #1865 from MeshEnvy/fix/python-json-parse-error
+commit=d92964352441e53b93e8667b802e04f6e072b39e
+description=* version 1.17.1
 
 # Evidence roots used by the stabilized C-library architecture.
 protocol_core_root=.reference/meshcore/src
