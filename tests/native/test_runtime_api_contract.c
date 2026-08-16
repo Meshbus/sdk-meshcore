@@ -695,6 +695,45 @@ static int test_runtime_explicit_path_anon_bypasses_peer_store(void)
   return 0;
 }
 
+static int test_runtime_delayed_anon_preserves_dispatcher_delay(void)
+{
+  unsigned int before_count;
+  uint32_t retry_deadline;
+  uint8_t peer_path[] = {0x52U};
+
+  NATIVE_TEST_ASSERT_EQ(0, init_runtime_for_api_test());
+  meshcore_native_platform_peer_path_set(true, true, peer_path,
+                                         sizeof(peer_path), 1U);
+
+  before_count = meshcore_native_platform_radio_send_count_get();
+  NATIVE_TEST_ASSERT_EQ(0, meshcore_node_anon_data_send_direct_delayed(
+                              s_public_key, s_payload, 1U, 300U));
+  NATIVE_TEST_ASSERT_EQ(before_count,
+                        meshcore_native_platform_radio_send_count_get());
+  meshcore_native_platform_time_set(300U, 0U);
+  NATIVE_TEST_ASSERT_EQ(0, meshcore_timer_fired(300U));
+  NATIVE_TEST_ASSERT_EQ(before_count,
+                        meshcore_native_platform_radio_send_count_get());
+
+  meshcore_native_platform_radio_receiving_set(true);
+  meshcore_native_platform_time_set(301U, 0U);
+  NATIVE_TEST_ASSERT_EQ(0, meshcore_timer_fired(301U));
+  NATIVE_TEST_ASSERT_EQ(before_count,
+                        meshcore_native_platform_radio_send_count_get());
+  retry_deadline = meshcore_native_platform_last_timer_deadline_get();
+  NATIVE_TEST_ASSERT(retry_deadline > 301U);
+
+  meshcore_native_platform_radio_receiving_set(false);
+  meshcore_native_platform_time_set(retry_deadline, 0U);
+  NATIVE_TEST_ASSERT_EQ(0, meshcore_timer_fired(retry_deadline));
+  NATIVE_TEST_ASSERT(meshcore_native_platform_radio_send_count_get() >
+                     before_count);
+  NATIVE_TEST_ASSERT_EQ(0, complete_last_tx());
+
+  meshcore_deinit();
+  return 0;
+}
+
 static int test_runtime_channel_success_paths_publish_frames(void)
 {
   struct meshcore_packet packet;
@@ -866,6 +905,7 @@ int main(void)
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_peer_message_route_selection());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_direct_anon_never_falls_back_to_flood());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_explicit_path_anon_bypasses_peer_store());
+  NATIVE_TEST_ASSERT_EQ(0, test_runtime_delayed_anon_preserves_dispatcher_delay());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_channel_success_paths_publish_frames());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_node_discover_request_and_response_events());
 

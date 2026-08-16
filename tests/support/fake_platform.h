@@ -16,6 +16,7 @@ void meshcore_native_platform_reset(void);
 void meshcore_native_platform_identity_get_fail_set(bool fail);
 void meshcore_native_platform_timer_arm_fail_set(bool fail);
 void meshcore_native_platform_radio_send_fail_set(bool fail);
+void meshcore_native_platform_radio_receiving_set(bool receiving);
 void meshcore_native_platform_event_fail_set(bool fail);
 void meshcore_native_platform_sha256_two_fragments_zero_set(bool zero);
 void meshcore_native_platform_peer_path_set(bool exists,

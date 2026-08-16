@@ -658,7 +658,20 @@ bool meshcore_dispatcher_next_deadline_get(
 
   if (meshcore_packet_queue_manager_next_outbound_scheduled_get(
           dispatcher->packet_manager, now, &scheduled_for)) {
-    if (meshcore_dispatcher_deadline_accumulate(now, scheduled_for,
+    uint32_t outbound_deadline = scheduled_for;
+    uint32_t tx_ready_deadline =
+        (uint32_t)dispatcher->next_tx_time + 1U;
+
+    /*
+     * A queued packet is eligible only after both its per-packet schedule and
+     * the dispatcher-wide TX backoff have expired.  Treating these as two
+     * independent deadlines can repeatedly arm an already-due packet time and
+     * lose the later CAD retry wake-up on work-queue based platforms.
+     */
+    if ((int32_t)(tx_ready_deadline - outbound_deadline) > 0) {
+      outbound_deadline = tx_ready_deadline;
+    }
+    if (meshcore_dispatcher_deadline_accumulate(now, outbound_deadline,
                                                 &has_deadline, &deadline)) {
       *deadline_ms = deadline;
       return true;
@@ -669,16 +682,6 @@ bool meshcore_dispatcher_next_deadline_get(
           dispatcher->packet_manager, now, &scheduled_for)) {
     if (meshcore_dispatcher_deadline_accumulate(now, scheduled_for,
                                                 &has_deadline, &deadline)) {
-      *deadline_ms = deadline;
-      return true;
-    }
-  }
-
-  if (meshcore_packet_queue_manager_get_outbound_total(
-          dispatcher->packet_manager) > 0) {
-    if (meshcore_dispatcher_deadline_accumulate(
-            now, (uint32_t)dispatcher->next_tx_time, &has_deadline,
-            &deadline)) {
       *deadline_ms = deadline;
       return true;
     }

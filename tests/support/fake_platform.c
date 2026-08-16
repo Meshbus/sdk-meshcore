@@ -64,6 +64,7 @@ static bool s_channel_secret_match;
 static bool s_identity_get_fail;
 static bool s_timer_arm_fail;
 static bool s_radio_send_fail;
+static bool s_radio_receiving;
 static bool s_event_fail;
 static bool s_sha256_two_fragments_zero;
 static char s_node_name[MESHCORE_NODE_NAME_MAX_LEN];
@@ -111,6 +112,7 @@ void meshcore_native_platform_reset(void)
   s_identity_get_fail = false;
   s_timer_arm_fail = false;
   s_radio_send_fail = false;
+  s_radio_receiving = false;
   s_event_fail = false;
   s_sha256_two_fragments_zero = false;
   memset(s_node_name, 0, sizeof(s_node_name));
@@ -146,6 +148,11 @@ void meshcore_native_platform_timer_arm_fail_set(bool fail)
 void meshcore_native_platform_radio_send_fail_set(bool fail)
 {
   s_radio_send_fail = fail;
+}
+
+void meshcore_native_platform_radio_receiving_set(bool receiving)
+{
+  s_radio_receiving = receiving;
 }
 
 void meshcore_native_platform_event_fail_set(bool fail)
@@ -473,7 +480,7 @@ bool meshcore_platform_radio_in_rx_mode_get(void)
 
 bool meshcore_platform_radio_receiving_get(void)
 {
-  return false;
+  return s_radio_receiving;
 }
 
 void meshcore_platform_radio_noise_floor_calibrate(int threshold)
