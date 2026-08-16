@@ -242,6 +242,8 @@ Runtime should expose stable public operations for:
 - trace path
 - telemetry request
 - generic binary request only if the upstream behavior is intentionally kept
+- anonymous encrypted peer datagrams with explicit flood, known-direct, or
+  caller-supplied authenticated return-path policy
 
 Public C function names live in `include/meshcore/runtime.h`. Do not add
 public names solely because an upstream class or old helper exposed a similar

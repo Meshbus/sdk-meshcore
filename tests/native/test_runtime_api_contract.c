@@ -6,6 +6,7 @@
 #include "native_test.h"
 #include "fake_platform.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "meshcore/runtime.h"
@@ -42,6 +43,11 @@
 /* MESHCORE_API_COVERAGE: meshcore_node_binary_request */
 /* MESHCORE_API_COVERAGE: meshcore_node_binary_request_with_tag */
 /* MESHCORE_API_COVERAGE: meshcore_node_anon_data_send */
+/* MESHCORE_API_COVERAGE: meshcore_node_anon_data_send_direct */
+/* MESHCORE_API_COVERAGE: meshcore_node_anon_data_send_delayed */
+/* MESHCORE_API_COVERAGE: meshcore_node_anon_data_send_direct_delayed */
+/* MESHCORE_API_COVERAGE: meshcore_node_anon_data_send_via_path */
+/* MESHCORE_API_COVERAGE: meshcore_node_anon_data_send_via_path_delayed */
 /* MESHCORE_API_COVERAGE: meshcore_node_binary_response */
 /* MESHCORE_API_COVERAGE: meshcore_node_discover_request */
 /* MESHCORE_API_COVERAGE: meshcore_raw_data_send meshcore_control_data_send */
@@ -148,6 +154,17 @@ static int assert_runtime_entry_points_reject_uninitialized(void)
       s_public_key, s_payload, 1U, 0x12345678U) < 0);
   NATIVE_TEST_ASSERT(meshcore_node_anon_data_send(s_public_key, s_payload, 1U) <
                      0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_direct(
+                         s_public_key, s_payload, 1U) < 0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_delayed(
+                         s_public_key, s_payload, 1U, 300U) < 0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_direct_delayed(
+                         s_public_key, s_payload, 1U, 300U) < 0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_via_path(
+                         s_public_key, s_payload, 1U, s_path, 1U, 1U) < 0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_via_path_delayed(
+                         s_public_key, s_payload, 1U, s_path, 1U, 1U,
+                         300U) < 0);
   request.route = MESHCORE_COMMON_MESSAGE_ROUTE_DIRECT;
   request.tag = 0x12345678U;
   NATIVE_TEST_ASSERT(meshcore_node_binary_response(&request, NULL, 0U) < 0);
@@ -202,6 +219,7 @@ static int test_init_deinit_lifecycle_and_hook_failure(void)
 static int test_runtime_apis_reject_invalid_arguments(void)
 {
   meshcore_common_binary_request_event_t request = {0};
+  uint8_t overlong_path[MESHCORE_MAX_PATH_LEN];
   unsigned int radio_send_count;
   uint32_t tag = 0U;
   uint8_t control_payload = 0x80U;
@@ -281,6 +299,32 @@ static int test_runtime_apis_reject_invalid_arguments(void)
                      0);
   NATIVE_TEST_ASSERT(meshcore_node_anon_data_send(
       s_public_key, s_payload, MESHCORE_MAX_ANON_DATA_PAYLOAD_LEN + 1U) < 0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_direct(NULL, s_payload, 1U) <
+                     0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_direct(
+                         s_public_key, NULL, 1U) < 0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_direct(
+                         s_public_key, s_payload, 0U) < 0);
+  NATIVE_TEST_ASSERT(meshcore_node_anon_data_send_direct(
+                         s_public_key, s_payload,
+                         MESHCORE_MAX_ANON_DATA_PAYLOAD_LEN + 1U) < 0);
+  memset(overlong_path, 0x52, sizeof(overlong_path));
+  NATIVE_TEST_ASSERT_EQ(
+      -EINVAL, meshcore_node_anon_data_send_via_path(
+                   s_public_key, s_payload, 1U, overlong_path,
+                   sizeof(overlong_path), 1U));
+  NATIVE_TEST_ASSERT_EQ(
+      -EINVAL, meshcore_node_anon_data_send_via_path(
+                   s_public_key, s_payload, 1U, s_path, 1U, 0U));
+  NATIVE_TEST_ASSERT_EQ(
+      -EINVAL, meshcore_node_anon_data_send_via_path(
+                   s_public_key, s_payload, 1U, s_path, 1U, 4U));
+  NATIVE_TEST_ASSERT_EQ(
+      -EINVAL, meshcore_node_anon_data_send_via_path(
+                   s_public_key, s_payload, 1U, s_path, 1U, 2U));
+  NATIVE_TEST_ASSERT_EQ(
+      -EINVAL, meshcore_node_anon_data_send_via_path(
+                   s_public_key, s_payload, 1U, NULL, 1U, 1U));
 
   request.route = MESHCORE_COMMON_MESSAGE_ROUTE_DIRECT;
   request.tag = 0x12345678U;
@@ -584,6 +628,73 @@ static int test_runtime_peer_message_route_selection(void)
   return 0;
 }
 
+static int test_runtime_direct_anon_never_falls_back_to_flood(void)
+{
+  struct meshcore_packet packet;
+  const uint8_t *raw;
+  size_t raw_len;
+  unsigned int before_count;
+  uint8_t peer_path[] = {0x52U};
+
+  NATIVE_TEST_ASSERT_EQ(0, init_runtime_for_api_test());
+
+  meshcore_native_platform_peer_path_set(false, false, NULL, 0U, 1U);
+  before_count = meshcore_native_platform_radio_send_count_get();
+  NATIVE_TEST_ASSERT_EQ(-ENOENT, meshcore_node_anon_data_send_direct(
+                                      s_public_key, s_payload, 1U));
+  NATIVE_TEST_ASSERT_EQ(before_count,
+                        meshcore_native_platform_radio_send_count_get());
+
+  meshcore_native_platform_peer_path_set(true, true, peer_path,
+                                         sizeof(peer_path), 1U);
+  NATIVE_TEST_ASSERT_EQ(0, meshcore_node_anon_data_send_direct(
+                              s_public_key, s_payload, 1U));
+  NATIVE_TEST_ASSERT_EQ(0, pump_until_radio_send(before_count));
+  raw = meshcore_native_platform_last_radio_send_get();
+  raw_len = meshcore_native_platform_last_radio_send_len_get();
+  meshcore_packet_init(&packet);
+  NATIVE_TEST_ASSERT(meshcore_packet_read_from(&packet, raw, (uint8_t)raw_len));
+  NATIVE_TEST_ASSERT_EQ(PAYLOAD_TYPE_ANON_REQ,
+                        meshcore_packet_get_payload_type(&packet));
+  NATIVE_TEST_ASSERT_EQ(ROUTE_TYPE_DIRECT,
+                        meshcore_packet_get_route_type(&packet));
+  NATIVE_TEST_ASSERT_EQ(peer_path[0], packet.path[0]);
+  NATIVE_TEST_ASSERT_EQ(0, complete_last_tx());
+
+  meshcore_deinit();
+  return 0;
+}
+
+static int test_runtime_explicit_path_anon_bypasses_peer_store(void)
+{
+  struct meshcore_packet packet;
+  const uint8_t *raw;
+  size_t raw_len;
+  unsigned int before_count;
+  uint8_t return_path[] = {0x62U, 0x52U};
+
+  NATIVE_TEST_ASSERT_EQ(0, init_runtime_for_api_test());
+  meshcore_native_platform_peer_path_set(false, false, NULL, 0U, 1U);
+
+  before_count = meshcore_native_platform_radio_send_count_get();
+  NATIVE_TEST_ASSERT_EQ(0, meshcore_node_anon_data_send_via_path(
+                              s_public_key, s_payload, 1U, return_path,
+                              sizeof(return_path), 1U));
+  NATIVE_TEST_ASSERT_EQ(0, pump_until_radio_send(before_count));
+  raw = meshcore_native_platform_last_radio_send_get();
+  raw_len = meshcore_native_platform_last_radio_send_len_get();
+  meshcore_packet_init(&packet);
+  NATIVE_TEST_ASSERT(meshcore_packet_read_from(&packet, raw, (uint8_t)raw_len));
+  NATIVE_TEST_ASSERT_EQ(ROUTE_TYPE_DIRECT,
+                        meshcore_packet_get_route_type(&packet));
+  NATIVE_TEST_ASSERT_EQ(sizeof(return_path), packet.path_len);
+  NATIVE_TEST_ASSERT(memcmp(return_path, packet.path, sizeof(return_path)) == 0);
+  NATIVE_TEST_ASSERT_EQ(0, complete_last_tx());
+
+  meshcore_deinit();
+  return 0;
+}
+
 static int test_runtime_channel_success_paths_publish_frames(void)
 {
   struct meshcore_packet packet;
@@ -753,6 +864,8 @@ int main(void)
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_raw_and_control_success_paths_publish_frames());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_local_advert_success_paths_publish_frames());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_peer_message_route_selection());
+  NATIVE_TEST_ASSERT_EQ(0, test_runtime_direct_anon_never_falls_back_to_flood());
+  NATIVE_TEST_ASSERT_EQ(0, test_runtime_explicit_path_anon_bypasses_peer_store());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_channel_success_paths_publish_frames());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_node_discover_request_and_response_events());
 

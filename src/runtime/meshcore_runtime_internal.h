@@ -128,6 +128,12 @@ struct meshcore_runtime_request_node_anon_data {
   uint8_t public_key[MESHCORE_PUBLIC_KEY_SIZE];
   uint8_t payload[MESHCORE_MAX_ANON_DATA_PAYLOAD_LEN];
   size_t payload_len;
+  uint32_t delay_ms;
+  bool direct_only;
+  bool has_explicit_path;
+  uint8_t path_byte_len;
+  uint8_t path_hash_size;
+  uint8_t path[MESHCORE_MAX_PATH_LEN];
 };
 
 struct meshcore_runtime_request_node_binary_response {

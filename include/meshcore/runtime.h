@@ -274,6 +274,91 @@ int meshcore_node_anon_data_send(const uint8_t *public_key,
                                  size_t payload_len);
 
 /**
+ * @brief Send anonymous encrypted data after a radio turn-around delay.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param delay_ms Minimum dispatcher delay before radio transmission.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_anon_data_send_delayed(const uint8_t *public_key,
+                                         const uint8_t *payload,
+                                         size_t payload_len,
+                                         uint32_t delay_ms);
+
+/**
+ * @brief Send anonymous data only when a known direct path exists.
+ *
+ * Unlike @ref meshcore_node_anon_data_send, this operation never falls back
+ * to flooding. Path admission and execution both fail closed with -ENOENT.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @return 0 on success, -ENOENT when no known direct path exists, or another
+ * negative errno-style value.
+ */
+int meshcore_node_anon_data_send_direct(const uint8_t *public_key,
+                                        const uint8_t *payload,
+                                        size_t payload_len);
+
+/**
+ * @brief Send delayed anonymous data with the same no-flood policy.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param delay_ms Minimum dispatcher delay before radio transmission.
+ * @return 0 on success, -ENOENT when no known direct path exists, or another
+ * negative errno-style value.
+ */
+int meshcore_node_anon_data_send_direct_delayed(const uint8_t *public_key,
+                                                const uint8_t *payload,
+                                                size_t payload_len,
+                                                uint32_t delay_ms);
+
+/**
+ * @brief Send anonymous data over a caller-owned explicit direct path.
+ *
+ * This is intended for authenticated, short-lived return routes that are not
+ * part of the host's persistent peer store. A zero-byte path is a valid
+ * verified neighbor route. The runtime never falls back to flooding.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param path Encoded direct-path bytes, or NULL when @p path_byte_len is zero.
+ * @param path_byte_len Number of bytes in @p path. This must not exceed
+ * MESHCORE_MAX_PATH_LEN and must be divisible by @p path_hash_size.
+ * @param path_hash_size Hash width in bytes, from 1 through 3.
+ * @return 0 on success, -EINVAL for an invalid path representation, or another
+ * negative errno-style value.
+ */
+int meshcore_node_anon_data_send_via_path(
+    const uint8_t *public_key, const uint8_t *payload, size_t payload_len,
+    const uint8_t *path, uint8_t path_byte_len, uint8_t path_hash_size);
+
+/**
+ * @brief Send explicit-path anonymous data after a dispatcher delay.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param path Encoded direct-path bytes, or NULL when @p path_byte_len is zero.
+ * @param path_byte_len Number of bytes in @p path. This must not exceed
+ * MESHCORE_MAX_PATH_LEN and must be divisible by @p path_hash_size.
+ * @param path_hash_size Hash width in bytes, from 1 through 3.
+ * @param delay_ms Minimum dispatcher delay before radio transmission.
+ * @return 0 on success, -EINVAL for an invalid path representation, or another
+ * negative errno-style value.
+ */
+int meshcore_node_anon_data_send_via_path_delayed(
+    const uint8_t *public_key, const uint8_t *payload, size_t payload_len,
+    const uint8_t *path, uint8_t path_byte_len, uint8_t path_hash_size,
+    uint32_t delay_ms);
+
+/**
  * @brief Send a binary service response for a received binary request.
  *
  * @param request Request event previously published by
