@@ -9,8 +9,9 @@ checks should verify.
 | Field | Value |
 | --- | --- |
 | Reference path | `.reference/meshcore` |
-| Commit | `d92964352441e53b93e8667b802e04f6e072b39e` |
-| Commit summary | `* version 1.17.1` |
+| Commit | `b599bc511751de3681e8b9e1d7f7a31d5d0dad4b` |
+| Commit summary | `Merge pull request #3389 from jbrazio/fix/set-af-validation` |
+| Evidence branch | `dev` snapshot, not a released v1.18 firmware |
 | Nearest companion tag | `companion-v1.17.1` |
 | Upstream license | MIT License; retained in `NOTICE` |
 
@@ -116,6 +117,38 @@ RadioLib collision handling, nRF crypto acceleration, FEM configuration, and
 board changes remain platform or excluded evidence.
 
 ## Sync Rule
+
+### September 2026 Development Sync
+
+The delta from `d9296435` to `b599bc51` promotes `Utils::isZeroes`,
+`AdvertDataParser::isValidName`, and `TXT_TYPE_CLI_COMMAND`. Name validation
+does not change inbound advert acceptance. CHAT client-repeat now consumes
+the existing flood/direct delay policy fields, with host defaults 0.5/0.2.
+CHAT/REPEATER airtime estimation follows the upstream path + payload + 2
+formula even for transport-coded packets, correcting an existing C mismatch.
+The C host boundary additionally rejects invalid or overflowing delay arithmetic
+by returning zero delay; valid upstream policy behavior remains unchanged.
+
+`meshcore_cli_send_to_node` and `meshcore_platform_cli_receive` carry legacy
+CLI_DATA and explicit CLI_COMMAND. The runtime owns plaintext framing, unique
+timestamps, route selection and reply delay; host callbacks own command
+execution, authorization, per-peer replay/retry suppression and publication.
+CHAT CLI_DATA is data-only and does not send a flood path-return. Replies use
+CLI_DATA without ACK registration. CHAT/REPEATER delay 600 ms, ROOM 300 ms,
+and SENSOR 1000 ms, following their respective example evidence. This does
+not import legacy plain-text server commands or room post/session services.
+
+Empty-channel filtering stays in the channel-search host contract. The RAW
+multi-byte path decoder and 165-byte channel-data limit were already present;
+the sync clarifies encoded path fields and adds RAW route boundary coverage.
+Companion frame v14, command 66/reply 29, UI, configuration storage, ACL models,
+board commands, hardware and transports remain host or excluded evidence.
+
+The compiled runtime oracle executes selected unchanged BaseChatMesh send and
+receive branches, server reply branches and Companion delay methods against
+native C scenarios. Clock/RNG, allocation, crypto transport and authorized
+command execution are test doubles. It validates plaintext and queued
+routing/timing, not upstream ACL implementation, Arduino firmware or RF.
 
 When upstream changes, classify each changed file as protocol core, promoted
 support, runtime evidence, host adapter evidence, excluded, or deferred before

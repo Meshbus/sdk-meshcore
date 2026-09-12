@@ -329,8 +329,12 @@ static void meshcore_runtime_on_peer_data_recv_internal(
     memcpy(&timestamp, data, sizeof(timestamp));
   }
 
-  if (meshcore_runtime_local_role_is(MESHCORE_COMMON_NODE_ROLE_CHAT) &&
-      type == PAYLOAD_TYPE_TXT_MSG && len > 5U) {
+  if (type == PAYLOAD_TYPE_TXT_MSG && len > 5U &&
+      ((data[4] >> 2) == MESHCORE_RUNTIME_TXT_TYPE_CLI_DATA ||
+       (data[4] >> 2) == MESHCORE_RUNTIME_TXT_TYPE_CLI_COMMAND)) {
+    meshcore_runtime_cli_receive(packet, sender, secret, data, len);
+  } else if (meshcore_runtime_local_role_is(MESHCORE_COMMON_NODE_ROLE_CHAT) &&
+             type == PAYLOAD_TYPE_TXT_MSG && len > 5U) {
     uint8_t flags = data[4] >> 2;
     size_t text_off = 5U;
     size_t text_len;

@@ -159,6 +159,19 @@ void meshcore_advert_data_parser_init(
   parser->valid = true;
 }
 
+bool meshcore_advert_data_parser_is_valid_name(const char *name)
+{
+  if (name == NULL) {
+    return false;
+  }
+  while (*name != '\0') {
+    if (strchr("[]\\:,?*", *name++) != NULL) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool meshcore_advert_data_parser_is_valid(
     const struct meshcore_advert_data_parser *parser)
 {

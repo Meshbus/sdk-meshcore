@@ -87,21 +87,32 @@ upstream oracle. After building the native suite, the strict checks are:
 ```sh
 python3 tools/upstream_lock_check.py --repo-root .
 ctest --test-dir "${meshcore_build_dir}" -L parity \
-  -E '^meshcore_upstream_oracle$' --output-on-failure
+  -E '^meshcore_upstream.*oracle$' --output-on-failure
 python3 tools/upstream_oracle.py --repo-root . \
   --meshcore-lib "${meshcore_build_dir}/libmeshcore.a" \
   --work-dir "${meshcore_build_dir}/strict-upstream-oracle" \
+  --require-reference
+python3 tools/upstream_runtime_oracle.py --repo-root . \
+  --runtime-test "${meshcore_build_dir}/tests/native/meshcore_native_runtime_cli" \
+  --work-dir "${meshcore_build_dir}/strict-upstream-runtime-oracle" \
   --require-reference
 ```
 
 Set `meshcore_build_dir` to the task's native build directory; adjust the
 library artifact path for the generator/platform. This example excludes the
-native oracle test and runs it once with `--require-reference` so missing
-evidence cannot silently skip it. Reuse an earlier oracle result only if it
+native oracle tests and runs each once with `--require-reference` so missing
+evidence cannot silently skip them. Reuse an earlier oracle result only if it
 actually executed and passed for the same build and reference. The standalone
 lock check also fails on a missing reference; a prior successful sync report
 lock result can be reused, but a missing-reference warning cannot satisfy
 strict acceptance.
+
+The runtime oracle compiles unchanged locked CLI/policy source excerpts with
+small allocation/clock/RNG/authorized-command doubles. It compares send and
+reply plaintext, encoded route choice and scheduling against native C cases.
+It does not run the entire upstream firmware or validate host ACL/storage.
+The native CLI suite additionally exercises the public radio ingress, bounded
+callbacks and malformed input. Keep these evidence levels distinct.
 
 ## Downstream Coverage
 

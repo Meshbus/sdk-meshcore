@@ -155,12 +155,33 @@ int meshcore_message_send_to_channel(const uint8_t *secret, size_t secret_len,
                                      size_t payload_len);
 
 /**
+ * @brief Send CLI data or an explicit command to a peer.
+ *
+ * Uses a unique local RTC timestamp and a known direct path (including zero
+ * hops), otherwise flood. No message ACK or retry state is registered.
+ *
+ * @param public_key Full peer public key.
+ * @param type MESHCORE_COMMON_CLI_DATA or MESHCORE_COMMON_CLI_COMMAND.
+ * @param attempt Attempt bits, in the range 0-3.
+ * @param text Borrowed text bytes without embedded NUL.
+ * @param text_len Text byte count, from 1 to MESHCORE_MAX_MESSAGE_TX_LEN.
+ * @return 0 when queued, -EINVAL for invalid input/path, -ENOBUFS for pool
+ * exhaustion, or a negative host error. Do not call from platform callbacks.
+ */
+int meshcore_cli_send_to_node(const uint8_t *public_key,
+                              meshcore_common_cli_type_t type, uint8_t attempt,
+                              const char *text, size_t text_len);
+
+/**
  * @brief Send a binary datagram to a channel.
  *
  * @param secret Full channel secret.
  * @param secret_len Number of bytes in @p secret.
- * @param path Optional encoded path bytes, or NULL when @p path_len is 0.
- * @param path_len Number of bytes in @p path.
+ * @param path Direct path bytes, or NULL for zero hops or an unknown path.
+ * @param path_len Wire path-length field: upper two bits encode hash width
+ * minus one (width 1-3), lower six bits encode hop count. The buffer contains
+ * width times hop-count bytes, at most MESHCORE_MAX_PATH_LEN. Zero hops is
+ * direct; MESHCORE_OUT_PATH_UNKNOWN selects flood and ignores @p path.
  * @param data_type Application data type.
  * @param payload Datagram payload bytes.
  * @param payload_len Number of bytes in @p payload.
@@ -393,8 +414,11 @@ int meshcore_node_discover_request(uint8_t filter, bool prefix_only,
 /**
  * @brief Send an application raw-custom packet over an encoded path.
  *
- * @param path Encoded direct path bytes.
- * @param path_len Number of bytes in @p path.
+ * @param path Direct path bytes, or NULL for a zero-hop path.
+ * @param path_len Wire path-length field: upper two bits encode hash width
+ * minus one (width 1-3), lower six bits encode hop count. The buffer contains
+ * width times hop-count bytes, at most MESHCORE_MAX_PATH_LEN. Unknown paths
+ * and the reserved width 4 are rejected; zero hops remains direct.
  * @param payload Raw-custom payload bytes.
  * @param payload_len Number of bytes in @p payload.
  * @return 0 on success, or a negative errno-style value.

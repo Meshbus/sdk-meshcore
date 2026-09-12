@@ -125,9 +125,25 @@ static uint32_t meshcore_runtime_packet_airtime(
 
 static uint32_t meshcore_runtime_randomized_delay(uint32_t airtime,
                                                   float factor) {
-  uint32_t t = (uint32_t)((float)airtime * factor);
+  float scaled = (float)airtime * factor;
+  uint32_t t;
+
+  /* Host policy is untrusted numeric input. Keep both the conversion and
+   * the five-bucket RNG upper bound representable, including NaN/Inf. */
+  if (!(scaled >= 0.0f && scaled < (float)(UINT32_MAX / 5U))) {
+    return 0U;
+  }
+  t = (uint32_t)scaled;
 
   return meshcore_rng_next_int(0U, 5U * t + 1U);
+}
+
+static uint32_t meshcore_runtime_repeat_airtime(
+    const struct meshcore_packet *packet) {
+  /* Companion/Repeater estimate path + payload + 2, without
+   * transport codes. The base Mesh delay below uses the full raw length. */
+  return meshcore_platform_bridge_radio_airtime(
+      2U + meshcore_packet_get_path_byte_len(packet) + packet->payload_len);
 }
 
 uint32_t meshcore_runtime_protocol_get_retransmit_delay(
@@ -144,15 +160,13 @@ uint32_t meshcore_runtime_protocol_get_retransmit_delay(
     return 0U;
   }
 
-  airtime = meshcore_runtime_packet_airtime(packet);
-  if (meshcore_runtime_local_role_is(MESHCORE_COMMON_NODE_ROLE_REPEATER)) {
+  if (meshcore_runtime_local_role_is(MESHCORE_COMMON_NODE_ROLE_REPEATER) ||
+      meshcore_runtime_client_repeat_active(&policy)) {
+    airtime = meshcore_runtime_repeat_airtime(packet);
     return meshcore_runtime_randomized_delay(airtime, policy.tx_delay_factor);
   }
 
-  if (meshcore_runtime_client_repeat_active(&policy)) {
-    return meshcore_runtime_randomized_delay(airtime, 0.5f);
-  }
-
+  airtime = meshcore_runtime_packet_airtime(packet);
   t = (airtime * 52U / 50U) / 2U;
   return meshcore_rng_next_int(0U, 5U) * t;
 }
@@ -170,14 +184,11 @@ uint32_t meshcore_runtime_protocol_get_direct_retransmit_delay(
     return 0U;
   }
 
-  airtime = meshcore_runtime_packet_airtime(packet);
-  if (meshcore_runtime_local_role_is(MESHCORE_COMMON_NODE_ROLE_REPEATER)) {
+  if (meshcore_runtime_local_role_is(MESHCORE_COMMON_NODE_ROLE_REPEATER) ||
+      meshcore_runtime_client_repeat_active(&policy)) {
+    airtime = meshcore_runtime_repeat_airtime(packet);
     return meshcore_runtime_randomized_delay(airtime,
                                              policy.direct_tx_delay_factor);
-  }
-
-  if (meshcore_runtime_client_repeat_active(&policy)) {
-    return meshcore_runtime_randomized_delay(airtime, 0.2f);
   }
 
   return 0U;

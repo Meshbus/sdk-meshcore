@@ -11,6 +11,8 @@
 #include "meshcore_packet_manager.h"
 #include "meshcore_cayenne_lpp_compat.h"
 #include "meshcore_txt_data.h"
+#include "meshcore_utils.h"
+#include "meshcore_advert_data.h"
 
 /*
  * Layer 1 support parity evidence:
@@ -218,6 +220,9 @@ static int test_txt_helpers_match_upstream_string_and_hex_semantics(void)
   NATIVE_TEST_ASSERT_EQ(0U, MESHCORE_TXT_TYPE_PLAIN);
   NATIVE_TEST_ASSERT_EQ(1U, MESHCORE_TXT_TYPE_CLI_DATA);
   NATIVE_TEST_ASSERT_EQ(2U, MESHCORE_TXT_TYPE_SIGNED_PLAIN);
+  NATIVE_TEST_ASSERT_EQ(3U, MESHCORE_TXT_TYPE_CLI_COMMAND);
+  NATIVE_TEST_ASSERT_EQ(MESHCORE_COMMON_CLI_DATA, MESHCORE_TXT_TYPE_CLI_DATA);
+  NATIVE_TEST_ASSERT_EQ(MESHCORE_COMMON_CLI_COMMAND, MESHCORE_TXT_TYPE_CLI_COMMAND);
   NATIVE_TEST_ASSERT_EQ(MESHCORE_CHANNEL_DATA_TYPE_RESERVED,
                         MESHCORE_TXT_DATA_TYPE_RESERVED);
   NATIVE_TEST_ASSERT_EQ(MESHCORE_CHANNEL_DATA_TYPE_DEV,
@@ -231,8 +236,34 @@ static int test_txt_helpers_match_upstream_string_and_hex_semantics(void)
   return 0;
 }
 
+static int test_zeroes_and_advert_name_helpers(void)
+{
+  uint8_t buf[3] = {0};
+  const char bad_chars[] = "[]\\:,?*";
+  char name[] = "a_b";
+  size_t i;
+
+  NATIVE_TEST_ASSERT(meshcore_utils_is_zeroes(NULL, 0U));
+  NATIVE_TEST_ASSERT(!meshcore_utils_is_zeroes(NULL, 1U));
+  NATIVE_TEST_ASSERT(meshcore_utils_is_zeroes(buf, sizeof(buf)));
+  for (i = 0U; i < sizeof(buf); i++) {
+    buf[i] = 1U;
+    NATIVE_TEST_ASSERT(!meshcore_utils_is_zeroes(buf, sizeof(buf)));
+    buf[i] = 0U;
+  }
+  NATIVE_TEST_ASSERT(meshcore_advert_data_parser_is_valid_name(""));
+  NATIVE_TEST_ASSERT(meshcore_advert_data_parser_is_valid_name("节点-123"));
+  NATIVE_TEST_ASSERT(!meshcore_advert_data_parser_is_valid_name(NULL));
+  for (i = 0U; i < sizeof(bad_chars) - 1U; i++) {
+    name[1] = bad_chars[i];
+    NATIVE_TEST_ASSERT(!meshcore_advert_data_parser_is_valid_name(name));
+  }
+  return 0;
+}
+
 int main(void)
 {
+  NATIVE_TEST_ASSERT_EQ(0, test_zeroes_and_advert_name_helpers());
   NATIVE_TEST_ASSERT_EQ(0, test_packet_queue_manager_fixed_pool_and_full_pool_behavior());
   NATIVE_TEST_ASSERT_EQ(0, test_packet_queue_priority_and_schedule_order());
   NATIVE_TEST_ASSERT_EQ(0, test_packet_queue_inbound_schedule_order());

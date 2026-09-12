@@ -1,0 +1,173 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 FoBE Studio
+// The tool injects unchanged upstream method/branch bodies at @ markers.
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <vector>
+#include "helpers/TxtDataHelpers.h"
+
+#define MAX_TEXT_LEN 160
+#define OUT_PATH_UNKNOWN 255
+#define PAYLOAD_TYPE_TXT_MSG 2
+#define CLI_REPLY_DELAY_MILLIS @CHAT_DELAY@
+#define SERVER_RESPONSE_DELAY @ROOM_DELAY@
+#define MSG_SEND_FAILED -1
+#define MSG_SEND_SENT_FLOOD 1
+#define MSG_SEND_SENT_DIRECT 2
+
+namespace mesh {
+struct Packet {
+  std::vector<uint8_t> data;
+  uint16_t payload_len = 10;
+  uint8_t path_len = 0;
+  bool transport = false;
+  unsigned getPathByteLen() const { return (path_len & 63) * ((path_len >> 6) + 1); }
+  unsigned getPathHashSize() const { return (path_len >> 6) + 1; }
+  unsigned getRawLength() const { return 2 + getPathByteLen() + payload_len + (transport ? 4 : 0); }
+};
+}
+struct ContactInfo {
+  int id = 0;
+  uint8_t out_path_len = 0;
+  uint8_t out_path[6] = {1, 2, 3, 4, 5, 6};
+  const uint8_t *getSharedSecret(int) const { static uint8_t secret[32] = {}; return secret; }
+};
+struct Clock {
+  uint32_t unique = 99;
+  uint32_t getCurrentTimeUnique() { return ++unique; }
+};
+struct Radio { uint32_t getEstAirtimeFor(unsigned len) const { return len + 1; } };
+struct RNG {
+  uint32_t nextInt(uint32_t min, uint32_t max) {
+    const uint8_t bytes[4] = {0xA5, 0xA6, 0xA7, 0xA8};
+    uint32_t word;
+    memcpy(&word, bytes, sizeof(word));
+    return min + word % (max - min);
+  }
+};
+class BaseChatMesh {
+public:
+  Radio radio;
+  Radio *_radio = &radio;
+  Clock clock;
+  RNG rng;
+  int self_id = 0;
+  uint32_t txt_send_timeout = 0;
+  mesh::Packet captured;
+  bool sent = false;
+  uint8_t captured_path = 0;
+  uint32_t captured_delay = 0;
+  Clock *getRTCClock() { return &clock; }
+  RNG *getRNG() { return &rng; }
+  uint32_t futureMillis(uint32_t n) { return n + 1; }
+  uint32_t calcFloodTimeoutMillisFor(uint32_t t) { return t; }
+  uint32_t calcDirectTimeoutMillisFor(uint32_t t, uint8_t) { return t; }
+  mesh::Packet *createDatagram(int, int, const uint8_t *, const uint8_t *data, unsigned len) {
+    captured.data.assign(data, data + len);
+    return &captured;
+  }
+  void sendFloodScoped(const ContactInfo &, mesh::Packet *, uint32_t delay = 0) {
+    sent = true; captured_path = 255; captured_delay = delay;
+  }
+  void sendFloodReply(mesh::Packet *p, uint32_t delay, unsigned hash) { sendFlood(p, delay, hash); }
+  void sendFlood(mesh::Packet *p, uint32_t delay, unsigned) { sendFloodScoped(ContactInfo{}, p, delay); }
+  void sendDirect(mesh::Packet *, const uint8_t *, uint8_t path_len, uint32_t delay = 0) {
+    sent = true; captured_path = path_len; captured_delay = delay;
+  }
+  void onCommandDataRecv(const ContactInfo &, mesh::Packet *, uint32_t, char *) {}
+  void onCLICommandRecv(const ContactInfo &, mesh::Packet *, uint32_t, char *, char *reply) {
+    memcpy(reply, "OK", 3);
+  }
+  int sendCommandData(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt,
+                      uint8_t txt_type, const char* text, uint32_t& est_timeout) @SEND@
+  void receive(ContactInfo &from, mesh::Packet *packet, const uint8_t *secret,
+               uint32_t sender_timestamp, uint8_t *data, uint8_t flags) {
+    if (flags == TXT_TYPE_CLI_DATA) @DATA@
+    else if (flags == TXT_TYPE_CLI_COMMAND) @COMMAND@
+  }
+#undef CLI_REPLY_DELAY_MILLIS
+#define CLI_REPLY_DELAY_MILLIS @REPEATER_DELAY@
+  void repeaterReply(ContactInfo *client, mesh::Packet *packet, const uint8_t *secret) {
+    uint32_t sender_timestamp = 100;
+    uint8_t temp[166] = {};
+    char *reply = reinterpret_cast<char *>(&temp[5]);
+    memcpy(reply, "OK", 3);
+    int text_len = 2;
+    @REPEATER@
+  }
+  void roomReply(ContactInfo *client, mesh::Packet *packet, const uint8_t *secret) {
+    uint32_t sender_timestamp = 100, now = getRTCClock()->getCurrentTimeUnique();
+    uint32_t delay_millis = 0;
+    uint8_t temp[166] = {};
+    temp[4] = TXT_TYPE_CLI_DATA << 2;
+    memcpy(&temp[5], "OK", 3);
+    int text_len = 2;
+    @ROOM@
+  }
+#undef CLI_REPLY_DELAY_MILLIS
+#define CLI_REPLY_DELAY_MILLIS @SENSOR_DELAY@
+  void sensorReply(ContactInfo *from, mesh::Packet *packet, const uint8_t *secret) {
+    uint32_t sender_timestamp = 100;
+    uint8_t temp[166] = {};
+    memcpy(&temp[5], "OK", 3);
+    int text_len = 2;
+    @SENSOR@
+  }
+  void emit(const char *label, unsigned role, unsigned type) {
+    uint32_t timestamp;
+    memcpy(&timestamp, captured.data.data(), 4);
+    printf("%s %u %u %u %u %u %u ", label, role, type, captured_path,
+           captured_delay, timestamp, captured.data[4]);
+    for (size_t i = 5; i < captured.data.size(); i++) printf("%02x", captured.data[i]);
+    printf("\n");
+  }
+};
+class MyMesh : public BaseChatMesh {
+public:
+  struct { float tx_delay_factor; float direct_tx_delay_factor; } _prefs;
+  uint32_t getRetransmitDelay(const mesh::Packet *packet) @FLOOD_POLICY@
+  uint32_t getDirectRetransmitDelay(const mesh::Packet *packet) @DIRECT_POLICY@
+};
+int main() {
+  const uint8_t paths[] = {255, 0, 0x42, 0x82};
+  uint8_t secret[32] = {};
+  for (unsigned type = 1; type <= 3; type += 2) {
+    for (auto path : paths) {
+      ContactInfo contact;
+      contact.out_path_len = path;
+      BaseChatMesh sender;
+      uint32_t timeout;
+      sender.sendCommandData(contact, 100, 2, type, "ver", timeout);
+      sender.emit("send", 1, type);
+      for (unsigned role = 1; role <= 4; role++) {
+        BaseChatMesh node;
+        mesh::Packet input;
+        uint8_t data[16] = {};
+        memcpy(&data[5], "ver", 4);
+        if (role == 1) node.receive(contact, &input, secret, 100, data, type);
+        if (role == 2) node.repeaterReply(&contact, &input, secret);
+        if (role == 3) node.roomReply(&contact, &input, secret);
+        if (role == 4) node.sensorReply(&contact, &input, secret);
+        if (node.sent) node.emit("reply", role, type);
+        else printf("data %u %u %u\n", role, type, path);
+      }
+    }
+  }
+  const float factors[][2] = {{0.5f, 0.2f}, {1.25f, 0.75f}, {0, 0}};
+  const uint8_t policy_paths[] = {0, 0x42, 0x82};
+  for (unsigned i = 0; i < 3; i++) {
+    for (unsigned p = 0; p < 3; p++) {
+      for (unsigned transport = 0; transport < 2; transport++) {
+        MyMesh node;
+        mesh::Packet packet;
+        packet.path_len = policy_paths[p];
+        packet.transport = transport != 0;
+        node._prefs.tx_delay_factor = factors[i][0];
+        node._prefs.direct_tx_delay_factor = factors[i][1];
+        printf("policy %u %u %u %u %u\n", i, p, transport,
+               node.getRetransmitDelay(&packet), node.getDirectRetransmitDelay(&packet));
+      }
+    }
+  }
+}

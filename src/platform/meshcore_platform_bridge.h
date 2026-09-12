@@ -17,6 +17,8 @@ struct meshcore_identity;
 struct meshcore_group_channel;
 
 void meshcore_platform_bridge_radio_begin(void);
+int meshcore_platform_bridge_cli_receive(
+    const meshcore_common_cli_event_t *event, char *reply, size_t capacity);
 int meshcore_platform_bridge_radio_packet_send(const uint8_t *data,
                                                 size_t len);
 uint32_t meshcore_platform_bridge_radio_airtime(size_t len);

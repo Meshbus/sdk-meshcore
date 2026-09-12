@@ -49,6 +49,7 @@
 #define MESHCORE_RUNTIME_TXT_TYPE_PLAIN 0U
 #define MESHCORE_RUNTIME_TXT_TYPE_CLI_DATA 1U
 #define MESHCORE_RUNTIME_TXT_TYPE_SIGNED_PLAIN 2U
+#define MESHCORE_RUNTIME_TXT_TYPE_CLI_COMMAND 3U
 #define MESHCORE_RUNTIME_TELEM_PERM_SUPPORTED                                  \
   (MESHCORE_TELEM_PERM_BASE | MESHCORE_TELEM_PERM_LOCATION |                  \
    MESHCORE_TELEM_PERM_ENVIRONMENT)
@@ -73,6 +74,7 @@ enum meshcore_runtime_request_type {
   MESHCORE_RUNTIME_REQUEST_CONTROL_DATA,
   MESHCORE_RUNTIME_REQUEST_NODE_BINARY_RESPONSE,
   MESHCORE_RUNTIME_REQUEST_NODE_ANON_DATA,
+  MESHCORE_RUNTIME_REQUEST_CLI,
 };
 
 struct meshcore_runtime_request_node_advert {
@@ -271,6 +273,9 @@ bool meshcore_runtime_deadline_accumulate(uint32_t now_ms,
                                           bool *has_deadline,
                                           uint32_t *deadline_ms);
 uint32_t meshcore_runtime_timestamp_now_seconds(void);
+void meshcore_runtime_cli_receive(struct meshcore_packet *packet,
+    const meshcore_common_peer_identity_t *sender, const uint8_t *secret,
+    const uint8_t *data, size_t len);
 bool meshcore_runtime_path_len_decode(uint8_t path_len_field,
                                       uint8_t *out_path_bytes,
                                       uint8_t *out_path_hash_size);

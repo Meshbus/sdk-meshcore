@@ -35,7 +35,7 @@ extern "C" {
  */
 
 /** Public ABI version for breaking interface revisions. */
-#define MESHCORE_ABI_VERSION 28U
+#define MESHCORE_ABI_VERSION 29U
 
 /** Size of an Ed25519 public key in bytes. */
 #define MESHCORE_PUBLIC_KEY_SIZE 32U
@@ -195,6 +195,34 @@ typedef enum meshcore_common_message_route {
   MESHCORE_COMMON_MESSAGE_ROUTE_DIRECT = 2,
 } meshcore_common_message_route_t;
 
+/** CLI subtypes carried by TXT_MSG. */
+typedef enum meshcore_common_cli_type {
+  /** Data/reply on CHAT receive; legacy command on server receive. */
+  MESHCORE_COMMON_CLI_DATA = 1,
+  /** Explicit command from the upstream v1.18 development line. */
+  MESHCORE_COMMON_CLI_COMMAND = 3,
+} meshcore_common_cli_type_t;
+
+/** Borrowed CLI event; copy if needed after the platform callback. */
+typedef struct meshcore_common_cli_event {
+  /** Full authenticated sender public key; permissions remain host-owned. */
+  uint8_t public_key[MESHCORE_PUBLIC_KEY_SIZE];
+  /** CLI_DATA or CLI_COMMAND. */
+  meshcore_common_cli_type_t type;
+  /** Sender RTC timestamp for host-owned replay protection. */
+  uint32_t sender_timestamp;
+  /** Attempt bits (0-3); CLI does not register a message ACK. */
+  uint8_t attempt;
+  /** Incoming route classification. */
+  meshcore_common_message_route_t route;
+  /** Receive SNR in quarter-dB units. */
+  int8_t rx_snr_q4;
+  /** Text bytes excluding the terminating NUL. */
+  uint16_t text_len;
+  /** NUL-terminated text, without embedded NUL in text_len bytes. */
+  char text[MESHCORE_MAX_MESSAGE_TX_LEN + 1U];
+} meshcore_common_cli_event_t;
+
 /**
  * @brief Host-owned local node identity.
  */
@@ -225,9 +253,15 @@ typedef struct meshcore_common_node_runtime_policy {
   uint8_t flood_max;
   /** Number of duplicate ACKs to send when applicable. */
   uint8_t multi_acks;
-  /** Flood transmit delay factor. */
+  /** Flood transmit delay factor for repeater and CHAT client-repeat.
+   * Hosts supply the default 0.5; zero explicitly disables this delay.
+   * Supply finite, nonnegative values. Invalid or overflowing delays use 0.
+   */
   float tx_delay_factor;
-  /** Direct transmit delay factor. */
+  /** Direct transmit delay factor for repeater and CHAT client-repeat.
+   * Hosts supply the default 0.2; zero explicitly disables this delay.
+   * Supply finite, nonnegative values. Invalid or overflowing delays use 0.
+   */
   float direct_tx_delay_factor;
 } meshcore_common_node_runtime_policy_t;
 

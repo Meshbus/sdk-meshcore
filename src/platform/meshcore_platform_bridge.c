@@ -124,6 +124,11 @@ void meshcore_platform_bridge_radio_begin(void) {
   meshcore_platform_radio_begin();
 }
 
+int meshcore_platform_bridge_cli_receive(
+    const meshcore_common_cli_event_t *event, char *reply, size_t capacity) {
+  return meshcore_platform_cli_receive(event, reply, capacity);
+}
+
 int meshcore_platform_bridge_radio_packet_send(const uint8_t *data,
                                                 size_t len) {
   return meshcore_platform_radio_packet_send(data, len);

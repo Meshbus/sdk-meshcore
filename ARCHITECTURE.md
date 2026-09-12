@@ -183,6 +183,8 @@ Runtime source layout follows behavior responsibility:
 - `meshcore.c`: singleton context, lifecycle, timer/deadline pump, radio RX/TX
   ingress, and protocol callback registration
 - `meshcore_runtime_request.c`: typed public request execution
+- `meshcore_runtime_cli.c`: typed CLI framing, delivery and synchronous reply
+  routing/timing; hosts own authorization, replay policy and command execution
 - `meshcore_runtime_pending.c`: ACK and pending response correlation
 - `meshcore_runtime_policy.c`: runtime forwarding and delay policy
 - `meshcore_runtime_receive.c`: protocol receive callbacks and receive
@@ -221,6 +223,7 @@ Layer 2 behavior evidence comes from these upstream files.
 | Contact and channel protocol fields | `.reference/meshcore/src/helpers/ContactInfo.h`, `.reference/meshcore/src/helpers/ChannelDetails.h` | Evidence for the peer identity/path and channel secret/hash fields consumed by runtime behavior. The caller owns any Contact/Channel business abstraction. |
 | Companion runtime flow | `.reference/meshcore/examples/companion_radio/main.cpp` | Example-level behavior flow and request usage. |
 | Companion mesh subclass behavior | `.reference/meshcore/examples/companion_radio/MyMesh.h`, `.reference/meshcore/examples/companion_radio/MyMesh.cpp` | Concrete behavior hooks and role-specific runtime decisions. |
+| Server CLI reply behavior | `.reference/meshcore/examples/simple_repeater/MyMesh.cpp`, `.reference/meshcore/examples/simple_room_server/MyMesh.cpp`, `.reference/meshcore/examples/simple_sensor/SensorMesh.cpp` | Legacy/explicit CLI framing and role-specific reply delays; ACL state, replay checks and command execution remain host-owned. |
 | Companion preferences and storage context | `.reference/meshcore/examples/companion_radio/NodePrefs.h`, `.reference/meshcore/examples/companion_radio/DataStore.h`, `.reference/meshcore/examples/companion_radio/DataStore.cpp` | Caller-owned context only; do not import contact/channel abstractions or persistence implementation. |
 
 ### Runtime Boundary
@@ -237,6 +240,7 @@ Runtime should expose stable public operations for:
 - local advert request
 - peer advert replay
 - direct peer message
+- typed CLI data/command send and authenticated receive with bounded host replies
 - channel message
 - path discovery
 - trace path

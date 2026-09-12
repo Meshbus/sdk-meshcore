@@ -13,6 +13,13 @@
 #include "meshcore/types.h"
 
 void meshcore_native_platform_reset(void);
+void meshcore_native_platform_role_set(meshcore_common_node_role_t role);
+void meshcore_native_platform_policy_set(
+    const meshcore_common_node_runtime_policy_t *policy);
+void meshcore_native_platform_cli_result_set(int result, const char *reply);
+unsigned int meshcore_native_platform_cli_count_get(void);
+size_t meshcore_native_platform_cli_capacity_get(void);
+const meshcore_common_cli_event_t *meshcore_native_platform_cli_event_get(void);
 void meshcore_native_platform_identity_get_fail_set(bool fail);
 void meshcore_native_platform_timer_arm_fail_set(bool fail);
 void meshcore_native_platform_radio_send_fail_set(bool fail);

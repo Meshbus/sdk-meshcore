@@ -69,6 +69,8 @@ uint8_t meshcore_advert_data_builder_encode_to(
 void meshcore_advert_data_parser_init(
     struct meshcore_advert_data_parser *parser, const uint8_t app_data[],
     uint8_t app_data_len);
+/* Name-setting validation only; does not change inbound advert acceptance. */
+bool meshcore_advert_data_parser_is_valid_name(const char *name);
 bool meshcore_advert_data_parser_is_valid(
     const struct meshcore_advert_data_parser *parser);
 uint8_t meshcore_advert_data_parser_get_type(

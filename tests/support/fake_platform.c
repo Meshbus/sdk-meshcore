@@ -68,9 +68,26 @@ static bool s_radio_receiving;
 static bool s_event_fail;
 static bool s_sha256_two_fragments_zero;
 static char s_node_name[MESHCORE_NODE_NAME_MAX_LEN];
+static meshcore_common_node_role_t s_role = MESHCORE_COMMON_NODE_ROLE_CHAT;
+static meshcore_common_node_runtime_policy_t s_policy;
+static unsigned int s_cli_count;
+static size_t s_cli_capacity;
+static meshcore_common_cli_event_t s_cli_event;
+static int s_cli_result = -ENOTSUP;
+static const char *s_cli_reply;
 
 void meshcore_native_platform_reset(void)
 {
+  s_cli_count = 0U;
+  s_cli_capacity = 0U;
+  memset(&s_cli_event, 0, sizeof(s_cli_event));
+  s_cli_result = -ENOTSUP;
+  s_cli_reply = NULL;
+  s_role = MESHCORE_COMMON_NODE_ROLE_CHAT;
+  memset(&s_policy, 0, sizeof(s_policy));
+  s_policy.path_hash_size = 1U;
+  s_policy.tx_delay_factor = 0.5f;
+  s_policy.direct_tx_delay_factor = 0.2f;
   s_timer_arm_count = 0U;
   s_timer_cancel_count = 0U;
   s_last_timer_deadline = 0U;
@@ -128,6 +145,43 @@ void meshcore_native_platform_reset(void)
   memset(&s_last_peer_path_publish, 0, sizeof(s_last_peer_path_publish));
   memset(&s_last_node_discover, 0, sizeof(s_last_node_discover));
   memset(&s_last_channel_data, 0, sizeof(s_last_channel_data));
+}
+
+void meshcore_native_platform_role_set(meshcore_common_node_role_t role)
+{
+  s_role = role;
+}
+
+void meshcore_native_platform_cli_result_set(int result, const char *reply)
+{
+  s_cli_result = result;
+  s_cli_reply = reply;
+}
+
+unsigned int meshcore_native_platform_cli_count_get(void) { return s_cli_count; }
+size_t meshcore_native_platform_cli_capacity_get(void) { return s_cli_capacity; }
+const meshcore_common_cli_event_t *meshcore_native_platform_cli_event_get(void)
+{
+  return &s_cli_event;
+}
+
+int meshcore_platform_cli_receive(const meshcore_common_cli_event_t *event,
+                                   char *reply, size_t reply_capacity)
+{
+  s_cli_count++;
+  s_cli_event = *event;
+  s_cli_capacity = reply_capacity;
+  if (reply != NULL && s_cli_reply != NULL && s_cli_result > 0 &&
+      (size_t)s_cli_result <= reply_capacity) {
+    memcpy(reply, s_cli_reply, (size_t)s_cli_result);
+  }
+  return s_cli_result;
+}
+
+void meshcore_native_platform_policy_set(
+    const meshcore_common_node_runtime_policy_t *policy)
+{
+  s_policy = *policy;
 }
 
 void meshcore_native_platform_peer_path_error_set(int err_code)
@@ -602,7 +656,7 @@ int meshcore_platform_node_identity_get(meshcore_common_node_identity_t *out)
     return -EINVAL;
   }
   memset(out, 0, sizeof(*out));
-  out->role = MESHCORE_COMMON_NODE_ROLE_CHAT;
+  out->role = s_role;
   for (i = 0U; i < sizeof(out->public_key); i++) {
     out->public_key[i] = (uint8_t)(0x10U + i);
   }
@@ -628,10 +682,7 @@ int meshcore_platform_node_runtime_policy_get(
   if (out == NULL) {
     return -EINVAL;
   }
-  memset(out, 0, sizeof(*out));
-  out->path_hash_size = 1U;
-  out->tx_delay_factor = 0.5f;
-  out->direct_tx_delay_factor = 0.2f;
+  *out = s_policy;
   return 0;
 }
 

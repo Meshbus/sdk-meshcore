@@ -75,6 +75,20 @@ meshcore_add_native_test(meshcore_native_runtime_pending_oracle
   test_runtime_pending_oracle.c
 )
 
+meshcore_add_native_test(meshcore_native_runtime_policy
+  LABELS runtime parity
+  SOURCES
+  ${MESHCORE_TEST_SUPPORT_DIR}/fake_platform.c
+  test_runtime_policy.c
+)
+
+meshcore_add_native_test(meshcore_native_runtime_cli
+  LABELS runtime api parity
+  SOURCES
+  ${MESHCORE_TEST_SUPPORT_DIR}/fake_platform.c
+  test_runtime_cli.c
+)
+
 meshcore_add_native_test(meshcore_native_fuzz_smoke
   LABELS fuzz api parity runtime
   SOURCES
@@ -119,6 +133,18 @@ add_test(NAME meshcore_upstream_oracle
 )
 set_tests_properties(meshcore_upstream_oracle PROPERTIES
   LABELS "parity;upstream-oracle"
+)
+
+add_test(NAME meshcore_upstream_runtime_oracle
+  COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_LIST_DIR}/../../tools/upstream_runtime_oracle.py
+    --repo-root ${MESHCORE_LIB_DIR}
+    --runtime-test $<TARGET_FILE:meshcore_native_runtime_cli>
+    --work-dir ${CMAKE_CURRENT_BINARY_DIR}/upstream-runtime-oracle
+    --cxx ${CMAKE_CXX_COMPILER}
+)
+set_tests_properties(meshcore_upstream_runtime_oracle PROPERTIES
+  LABELS "runtime;parity;upstream-oracle"
 )
 
 add_test(NAME meshcore_package_smoke

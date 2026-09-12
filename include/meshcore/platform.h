@@ -374,6 +374,10 @@ int meshcore_platform_channel_secret_hash(const uint8_t *secret,
 /**
  * @brief Search channel records by channel hash.
  *
+ * Return only configured channel records. Empty storage slots must not be
+ * returned, even when their zero-initialized hash/secret matches the query.
+ * A configured channel is not invalid merely because its secret is all zero.
+ *
  * @param hash Channel hash bytes.
  * @param[out] channels Destination channel views, or NULL to query support.
  * @param max_matches Capacity of @p channels in entries.
@@ -383,6 +387,30 @@ int meshcore_platform_channel_secret_hash(const uint8_t *secret,
 int meshcore_platform_channel_search_by_hash(
     const uint8_t *hash, meshcore_common_channel_view_t *channels,
     int max_matches);
+
+/**
+ * @brief Receive CLI text and optionally produce a synchronous reply.
+ *
+ * Hosts publish data and decide whether a command may execute. Permissions,
+ * command parsing and per-peer replay/retry suppression remain host-owned.
+ * CHAT CLI_DATA is data-only (reply NULL, capacity 0). Explicit commands and
+ * REPEATER/ROOM/SENSOR legacy CLI_DATA may reply after host authorization.
+ *
+ * @param event Borrowed authenticated event with NUL-terminated text.
+ * @param reply Borrowed output buffer, or NULL for data-only delivery.
+ * @param reply_capacity Maximum reply bytes, excluding an optional NUL.
+ * @return Reply byte count (no embedded NUL), zero for no reply, or negative
+ * errno to suppress reply. -EACCES/-ENOTSUP are normal refusals; other errors
+ * reach the request-error hook. Returning more than capacity fails. A host
+ * without CLI must provide an explicit -ENOTSUP stub.
+ *
+ * Never reenter meshcore runtime entrypoints here. After return, replies use
+ * CLI_DATA with no ACK: CHAT/REPEATER wait 600 ms, ROOM 300 ms, SENSOR 1000 ms.
+ * Known zero-hop routes remain direct. The library does not interpret flags
+ * as permissions or keep ACL state.
+ */
+int meshcore_platform_cli_receive(const meshcore_common_cli_event_t *event,
+                                   char *reply, size_t reply_capacity);
 
 /** @} */
 

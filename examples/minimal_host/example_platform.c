@@ -13,6 +13,15 @@
 
 #define UNUSED(x) (void)(x)
 
+int meshcore_platform_cli_receive(const meshcore_common_cli_event_t *event,
+                                   char *reply, size_t reply_capacity)
+{
+  UNUSED(event);
+  UNUSED(reply);
+  UNUSED(reply_capacity);
+  return -ENOTSUP;
+}
+
 static unsigned long s_now_ms = 1UL;
 static uint32_t s_now_s = 1U;
 

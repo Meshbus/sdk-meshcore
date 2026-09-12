@@ -4,8 +4,8 @@
 # extra dependencies. Paths are relative to the MeshCore repository root.
 
 reference_path=.reference/meshcore
-commit=d92964352441e53b93e8667b802e04f6e072b39e
-description=* version 1.17.1
+commit=b599bc511751de3681e8b9e1d7f7a31d5d0dad4b
+description=dev: Merge pull request #3389 from jbrazio/fix/set-af-validation
 
 # Evidence roots used by the stabilized C-library architecture.
 protocol_core_root=.reference/meshcore/src

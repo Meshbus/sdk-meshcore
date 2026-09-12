@@ -37,6 +37,8 @@ void meshcore_utils_to_hex(char *dest, const uint8_t *src, size_t len);
 bool meshcore_utils_from_hex(uint8_t *dest, int dest_size,
                              const char *src_hex);
 bool meshcore_utils_is_hex_char(char c);
+/* Empty buffers are zeroes; NULL is valid only when len is zero. */
+bool meshcore_utils_is_zeroes(const uint8_t *buf, size_t len);
 
 int meshcore_utils_parse_text_parts(char *text, const char *parts[],
                                     int max_num, char separator);

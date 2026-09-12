@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import textwrap
 from pathlib import Path
+from upstream_runtime_oracle import block
 
 
 ORACLE_SOURCE = r'''
@@ -25,6 +26,7 @@ ORACLE_SOURCE = r'''
 #include "helpers/AdvertDataHelpers.h"
 #include "helpers/TxtDataHelpers.h"
 #include "helpers/UTF8Helpers.h"
+#include "Utils.h"
 
 enum {
   UP_PH_TYPE_SHIFT = PH_TYPE_SHIFT,
@@ -46,6 +48,7 @@ enum {
   UP_TXT_TYPE_PLAIN = TXT_TYPE_PLAIN,
   UP_TXT_TYPE_CLI_DATA = TXT_TYPE_CLI_DATA,
   UP_TXT_TYPE_SIGNED_PLAIN = TXT_TYPE_SIGNED_PLAIN,
+  UP_TXT_TYPE_CLI_COMMAND = TXT_TYPE_CLI_COMMAND,
 };
 
 #undef PH_ROUTE_MASK
@@ -86,6 +89,7 @@ enum {
 #undef TXT_TYPE_PLAIN
 #undef TXT_TYPE_CLI_DATA
 #undef TXT_TYPE_SIGNED_PLAIN
+#undef TXT_TYPE_CLI_COMMAND
 #undef DATA_TYPE_RESERVED
 #undef DATA_TYPE_DEV
 
@@ -96,6 +100,7 @@ extern "C" {
 #include "meshcore_advert_data.h"
 #include "meshcore_txt_data.h"
 #include "meshcore_utf8.h"
+#include "meshcore_utils.h"
 }
 
 static void require_true(bool condition, const char *message) {
@@ -400,7 +405,27 @@ static void compare_constants(void) {
                  "TXT_TYPE_SIGNED_PLAIN parity");
 }
 
+static void compare_new_helpers(void) {
+  uint8_t bytes[3] = {};
+  for (unsigned i = 0; i < 4; i++) {
+    require_true(meshcore_utils_is_zeroes(bytes, sizeof(bytes)) ==
+                 mesh::Utils::isZeroes(bytes, sizeof(bytes)), "zeroes parity");
+    if (i < 3) { memset(bytes, 0, sizeof(bytes)); bytes[i] = 1; }
+  }
+  require_true(meshcore_utils_is_zeroes(nullptr, 0) ==
+               mesh::Utils::isZeroes(nullptr, 0), "empty zeroes parity");
+  const char *names[] = {"", "node", "节点-123", "a[b", "a]b", "a\\b",
+                         "a:b", "a,b", "a?b", "a*b"};
+  for (auto name : names) {
+    require_true(meshcore_advert_data_parser_is_valid_name(name) ==
+                 AdvertDataParser::isValidName(name), "advert name parity");
+  }
+  require_eq_u32(MESHCORE_TXT_TYPE_CLI_COMMAND, UP_TXT_TYPE_CLI_COMMAND,
+                 "CLI_COMMAND constant parity");
+}
+
 int main(void) {
+  compare_new_helpers();
   compare_constants();
   compare_packet_path_lengths();
   compare_packet_write_read();
@@ -538,7 +563,10 @@ def main() -> int:
   work_dir.mkdir(parents=True, exist_ok=True)
   write_stubs(stub_dir)
   oracle_cpp = work_dir / "upstream_oracle.cpp"
-  oracle_cpp.write_text(ORACLE_SOURCE, encoding="utf-8")
+  zeroes = block((ref_src / "Utils.cpp").read_text(), "bool Utils::isZeroes(")
+  oracle_cpp.write_text(ORACLE_SOURCE +
+      "\nnamespace mesh { bool Utils::isZeroes(const uint8_t* buf, size_t len) " +
+      zeroes + "\n}\n", encoding="utf-8")
   fake_platform_obj = work_dir / "fake_platform.o"
   exe = work_dir / "upstream_oracle"
   coverage_link_flags = []

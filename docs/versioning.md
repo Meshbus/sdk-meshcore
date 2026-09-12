@@ -21,15 +21,16 @@ host adapter compile against this public C boundary?".
 
 ## Current Compatibility Tuple
 
-For the current tree:
+For the current tree (a fixed upstream `dev` snapshot; not a released
+v1.18 firmware):
 
 | Field | Value |
 | --- | --- |
-| C package version | `0.3.0` |
-| Upstream evidence commit | `d92964352441e53b93e8667b802e04f6e072b39e` |
+| C package version | `0.4.0` |
+| Upstream evidence commit | `b599bc511751de3681e8b9e1d7f7a31d5d0dad4b` |
 | Nearest upstream companion tag | `companion-v1.17.1` |
 | Wire payload version | `PAYLOAD_VER_1`, encoded as `0x00` |
-| Host ABI version | `28` |
+| Host ABI version | `29` |
 
 This tuple is more precise than naming the C library `v1.17.1`. Upstream
 `companion-v1.17.1` is a firmware/application release line, not a standalone
@@ -41,7 +42,7 @@ When the library is ready for a public release, tag the C package version with
 an annotated tag:
 
 ```sh
-git tag -a v0.3.0 -m "meshcore 0.3.0"
+git tag -a v0.4.0 -m "meshcore 0.4.0"
 ```
 
 Do not create a tag only because the upstream firmware version changed. Update
@@ -50,11 +51,11 @@ the upstream evidence lock and release notes instead.
 A release note should include the full compatibility tuple:
 
 ```text
-C library version: 0.3.0
-Upstream evidence: d92964352441e53b93e8667b802e04f6e072b39e
+C library version: 0.4.0
+Upstream evidence: b599bc511751de3681e8b9e1d7f7a31d5d0dad4b
 Nearest upstream tag: companion-v1.17.1
 Wire compatibility: PAYLOAD_VER_1 / encoded 0x00
-Public ABI: 28
+Public ABI: 29
 ```
 
 ## Bump Rules
@@ -94,6 +95,9 @@ does so. A new accepted payload version is a protocol-compatibility change and
 must be called out in release notes.
 
 ### Host ABI Version
+
+ABI 29 adds the required CLI receive hook and makes CHAT client-repeat use
+the existing host delay factors. See [the porting guide](porting.md#migrating-to-abi-29).
 
 Bump `MESHCORE_ABI_VERSION` when a host adapter may need source changes or
 compile-time gating because of public C boundary changes, including:

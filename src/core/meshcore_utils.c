@@ -222,6 +222,20 @@ bool meshcore_utils_from_hex(uint8_t *dest, int dest_size, const char *src_hex)
 	return true;
 }
 
+bool meshcore_utils_is_zeroes(const uint8_t *buf, size_t len)
+{
+  if (buf == NULL && len != 0U) {
+    return false;
+  }
+  while (len > 0U) {
+    if (*buf++ != 0U) {
+      return false;
+    }
+    len--;
+  }
+  return true;
+}
+
 int meshcore_utils_parse_text_parts(char *text, const char *parts[], int max_num,
 				    char separator)
 {

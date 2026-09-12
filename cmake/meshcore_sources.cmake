@@ -91,6 +91,7 @@ set(MESHCORE_PLATFORM_BRIDGE_SOURCES
 
 set(MESHCORE_RUNTIME_SOURCES
   ${MESHCORE_LIB_DIR}/src/runtime/meshcore.c
+  ${MESHCORE_LIB_DIR}/src/runtime/meshcore_runtime_cli.c
   ${MESHCORE_LIB_DIR}/src/runtime/meshcore_runtime_control.c
   ${MESHCORE_LIB_DIR}/src/runtime/meshcore_runtime_event_publish.c
   ${MESHCORE_LIB_DIR}/src/runtime/meshcore_runtime_pending.c

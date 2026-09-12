@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-project(meshcore VERSION 0.3.0 LANGUAGES C)
+project(meshcore VERSION 0.4.0 LANGUAGES C)
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(MESHCORE_IS_TOP_LEVEL ON)

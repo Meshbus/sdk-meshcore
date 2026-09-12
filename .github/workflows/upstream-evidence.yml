@@ -35,11 +35,20 @@ jobs:
       - name: Build
         run: cmake --build build.meshcore-native --parallel
       - name: Parity tests
-        run: ctest --test-dir build.meshcore-native -L parity --output-on-failure
+        run: >
+          ctest --test-dir build.meshcore-native -L parity
+          -E '^meshcore_upstream.*oracle$' --output-on-failure
       - name: Upstream differential oracle
         run: >
           python3 tools/upstream_oracle.py
           --repo-root .
           --meshcore-lib build.meshcore-native/libmeshcore.a
           --work-dir build.meshcore-native/upstream-oracle
+          --require-reference
+      - name: Upstream runtime oracle
+        run: >
+          python3 tools/upstream_runtime_oracle.py
+          --repo-root .
+          --runtime-test build.meshcore-native/tests/native/meshcore_native_runtime_cli
+          --work-dir build.meshcore-native/upstream-runtime-oracle
           --require-reference

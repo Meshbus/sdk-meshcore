@@ -496,6 +496,40 @@ static int test_runtime_raw_and_control_success_paths_publish_frames(void)
   return 0;
 }
 
+static int test_runtime_raw_multibyte_paths(void)
+{
+  const uint8_t lengths[] = {0x00U, 0x40U, 0x80U, 0x42U, 0x82U, 0x60U, 0x95U};
+  const uint8_t invalid[] = {0x61U, 0x96U, 0xC0U, 0xFFU};
+  struct meshcore_packet packet;
+  size_t i;
+
+  for (i = 0U; i < sizeof(lengths); i++) {
+    uint8_t width = (uint8_t)((lengths[i] >> 6) + 1U);
+    uint8_t bytes = (uint8_t)(width * (lengths[i] & 0x3FU));
+    NATIVE_TEST_ASSERT_EQ(0, init_runtime_for_api_test());
+    NATIVE_TEST_ASSERT_EQ(0, meshcore_raw_data_send(
+        bytes == 0U ? NULL : s_path, lengths[i], s_payload, 1U));
+    NATIVE_TEST_ASSERT_EQ(0, pump_until_radio_send(0U));
+    NATIVE_TEST_ASSERT(meshcore_packet_read_from(
+        &packet, meshcore_native_platform_last_radio_send_get(),
+        (uint8_t)meshcore_native_platform_last_radio_send_len_get()));
+    NATIVE_TEST_ASSERT_EQ(lengths[i], packet.path_len);
+    NATIVE_TEST_ASSERT_EQ(ROUTE_TYPE_DIRECT, meshcore_packet_get_route_type(&packet));
+    NATIVE_TEST_ASSERT(memcmp(packet.path, s_path, bytes) == 0);
+    NATIVE_TEST_ASSERT_EQ(1U, packet.payload_len);
+    NATIVE_TEST_ASSERT_EQ(s_payload[0], packet.payload[0]);
+    meshcore_deinit();
+  }
+  NATIVE_TEST_ASSERT_EQ(0, init_runtime_for_api_test());
+  for (i = 0U; i < sizeof(invalid); i++) {
+    NATIVE_TEST_ASSERT_EQ(-EINVAL, meshcore_raw_data_send(
+        s_path, invalid[i], s_payload, 1U));
+  }
+  NATIVE_TEST_ASSERT_EQ(0U, meshcore_native_platform_radio_send_count_get());
+  meshcore_deinit();
+  return 0;
+}
+
 static int test_runtime_local_advert_success_paths_publish_frames(void)
 {
   struct meshcore_packet packet;
@@ -901,6 +935,7 @@ int main(void)
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_transient_radio_failure_clears_outbound_state());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_public_payload_limits_accept_valid_max());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_raw_and_control_success_paths_publish_frames());
+  NATIVE_TEST_ASSERT_EQ(0, test_runtime_raw_multibyte_paths());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_local_advert_success_paths_publish_frames());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_peer_message_route_selection());
   NATIVE_TEST_ASSERT_EQ(0, test_runtime_direct_anon_never_falls_back_to_flood());
