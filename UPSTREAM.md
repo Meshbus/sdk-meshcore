@@ -26,13 +26,16 @@ compatibility is tracked as a tuple: C package version, upstream evidence
 commit, nearest upstream tag, wire payload version, and public ABI version. See
 `docs/versioning.md`.
 
-To prepare the reference checkout in a fresh clone:
+For work requiring locked upstream evidence, prepare the reference checkout in
+a fresh clone using the revision from `upstream.lock`:
 
 ```sh
 mkdir -p .reference
 git clone https://github.com/meshcore-dev/MeshCore .reference/meshcore
-git -C .reference/meshcore fetch origin d92964352441e53b93e8667b802e04f6e072b39e
-git -C .reference/meshcore checkout --detach d92964352441e53b93e8667b802e04f6e072b39e
+meshcore_reference_commit="$(sed -n 's/^commit=//p' upstream.lock)"
+test -n "${meshcore_reference_commit}"
+git -C .reference/meshcore fetch origin "${meshcore_reference_commit}"
+git -C .reference/meshcore checkout --detach "${meshcore_reference_commit}"
 ```
 
 ## Evidence Classification
@@ -121,20 +124,17 @@ public API changes, and test placement.
 
 ## Sync Check Workflow
 
-Run these checks from the MeshCore repository root before starting an upstream
-sync or after changing the MeshCore architecture:
+Select checks using [the testing guide](docs/testing.md#sync-and-boundary-checks).
+Architecture and source-boundary changes use the sync report. Upstream sync,
+strict compatibility validation, and releases also require the exact locked
+reference checkout; use the strict procedure in that guide.
 
-```sh
-python3 tools/upstream_lock_check.py --repo-root .
-python3 tools/meshcore_sync_report.py --repo-root .
-```
-
-The lock check verifies that `.reference/meshcore` is at the commit recorded in
-`upstream.lock` and has no local reference-tree changes. It is expected to fail
-in a fresh public clone until the reference checkout is prepared with the
-commands above. `meshcore_sync_report.py` still runs repository-local boundary
-checks without `.reference/meshcore` and reports missing upstream evidence as
-warnings.
+The sync report already runs the lock check, which verifies the reference
+commit and dirty state. A missing reference is a warning for repository-local
+boundary checks, but leaves strict upstream validation incomplete. A wrong or
+dirty existing reference is a failure, not a reason to reset or update it
+without authorization. Ordinary local boundary work can continue without
+preparing a reference checkout.
 
 The sync report groups drift into these categories:
 

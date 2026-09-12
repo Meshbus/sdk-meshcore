@@ -110,18 +110,14 @@ the public host boundary unchanged.
 
 ## Pre-Release Checks
 
-Before creating a release tag, run:
+Before creating an authorized release tag, complete the full native suite,
+sync/boundary checks, strict upstream validation, and install/consumer smoke
+from [the testing guide](testing.md). Reuse checks already completed for the
+same release candidate and locked evidence. Confirm that package smoke covers
+the intended C package version.
 
-```sh
-cmake -S . -B build.meshcore-native \
-  -DMESHCORE_BUILD_TESTS=ON \
-  -DMESHCORE_BUILD_EXAMPLES=ON
-cmake --build build.meshcore-native
-ctest --test-dir build.meshcore-native --output-on-failure
-python3 tools/meshcore_sync_report.py --repo-root .
-python3 tools/upstream_lock_check.py --repo-root .
-```
-
-Also install to a temporary prefix and verify that a downstream consumer can
-use `find_package(meshcore CONFIG REQUIRED)` for the intended C package
-version.
+Review the PR and cross-platform CI results, coverage report, and fuzz/stress
+findings described in [the test strategy](../PLAN.md#ci-gates). Missing strict
+upstream evidence leaves release validation incomplete. Release-triggered
+automation is not currently configured; the manual/scheduled upstream workflow
+does not establish that a particular release candidate was validated.

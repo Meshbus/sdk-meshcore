@@ -12,6 +12,8 @@ public C contracts.
   evidence mapping, and upstream synchronization procedure.
 - For host integration or public ABI work, consult the affected public headers
   and `docs/porting.md`.
+- For ABI compatibility decisions, version changes, or release preparation,
+  consult `docs/versioning.md`.
 - For validation, select applicable checks from `docs/testing.md`.
 - For migration or gap analysis, use the migration guidance and difference
   classification in `ARCHITECTURE.md`; include expected behavior, upstream

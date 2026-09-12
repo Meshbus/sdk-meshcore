@@ -4,6 +4,11 @@ This inventory started as the Phase 0 baseline for the MeshCore library
 architecture stabilization plan and is kept current as the platform-hook ABI
 migration removes compatibility fallbacks.
 
+Status: current ownership notes with historical migration context. Phase
+references describe past work; the gap table records boundary risks and
+validation needs, not a list of changes authorized for every task. Use
+[the testing guide](docs/testing.md) to select current checks.
+
 ## Public Header Ownership
 
 | Header | Current contents | Target owner |
@@ -99,9 +104,9 @@ adapter headers.
 
 | Layer | Upstream evidence | Target C surface | Expected behavior | Migration risk | Validation need | Boundary notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Protocol core | Top-level `.reference/meshcore/src` files | `core` responsibility area and protocol API map | Core packet, identity, dispatcher, mesh, and utility behavior remains traceable. | Moving helper-derived behavior into core hides evidence ownership. | Protocol API map plus focused protocol Twister suites. | Helpers promoted to support must stay documented separately. |
+| Protocol core | Top-level `.reference/meshcore/src` files | `core` responsibility area and protocol API map | Core packet, identity, dispatcher, mesh, and utility behavior remains traceable. | Moving helper-derived behavior into core hides evidence ownership. | Evidence mapping plus focused native protocol/parity tests. | Helpers promoted to support must stay documented separately. |
 | Support helpers | Selected `src/helpers` wire/data helpers | `support` responsibility area | Packet-visible helper formats remain available without importing host/application helpers. | Over-promoting helper objects can leak application state into generic ABI. | Support/helper parity tests and sync classification. | Support modules may be Layer 1 tests but are not protocol-core sources. |
 | Runtime | `BaseChatMesh` and companion example behavior | `runtime` public requests and event ingress | Host-driven runtime preserves observable upstream behavior. | Hidden host callbacks or unclassified request surfaces make runtime behavior hard to audit. | Runtime API map and oracle tests. | Runtime owns event publication; protocol core should not own host policy. |
-| Platform boundary | Current HAL/PAL headers plus host integration needs | Direct `meshcore_platform_*` hook contract | Hosts can see required primitives/policy/events from include contracts alone. | Exposing unused or ambiguous host hooks can make platform implementations provide behavior the runtime does not consume. | Boundary tests, runtime platform tests, and downstream host service tests. | Flat wrappers are retired; callers use canonical nested headers. |
+| Platform boundary | Public platform headers plus host integration needs | Direct `meshcore_platform_*` hook contract | Hosts can see required primitives/policy/events from include contracts alone. | Exposing unused or ambiguous host hooks can make platform implementations provide behavior the runtime does not consume. | Native boundary/runtime platform tests; downstream tests when a concrete host contract or integration is affected. | Flat wrappers are retired; callers use canonical nested headers. |
 | Build/sync | Current CMake lists and upstream reference | Source manifest plus sync report tools | New files and upstream changes become visible drift. | Manual lists can silently omit files after moves. | Manifest check, lock check, API map checks. | Source manifest should feed tests and downstream host builds. |
 | Host adapter | Host service and companion frames | Platform-hook implementation outside this repository | RTOS messaging, settings, companion protocol, and board policy remain host-owned. | Duplicated constants and path sentinels can drift from generic limits. | Downstream host service tests plus generic library tests. | Do not move product API ownership into generic library. |

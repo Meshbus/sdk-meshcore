@@ -20,15 +20,9 @@ or consumed by platform code.
 
 ## Standalone Build
 
-The library and examples can be built without Zephyr, west, or Twister:
-
-```sh
-cmake -S . -B build.meshcore-native \
-  -DMESHCORE_BUILD_TESTS=ON \
-  -DMESHCORE_BUILD_EXAMPLES=ON
-cmake --build build.meshcore-native
-ctest --test-dir build.meshcore-native --output-on-failure
-```
+The library and examples can be built without Zephyr, west, or Twister. Use the
+[native build and test commands](docs/testing.md#native-ctest) with a
+task-specific output directory.
 
 `MESHCORE_BUILD_TESTS=ON` builds native CTest tests with a deterministic fake
 platform implementation. These tests validate the public headers, selected
@@ -44,13 +38,9 @@ add_subdirectory(path/to/meshcore)
 target_link_libraries(app PRIVATE meshcore::meshcore)
 ```
 
-Or install and consume it as a CMake package:
-
-```sh
-cmake -S . -B build.meshcore-install -DMESHCORE_INSTALL=ON
-cmake --build build.meshcore-install
-cmake --install build.meshcore-install --prefix /tmp/meshcore-prefix
-```
+Or consume an installed CMake package. The
+[package smoke procedure](docs/testing.md#package-smoke-test) demonstrates
+installation and validates a downstream consumer:
 
 ```cmake
 find_package(meshcore CONFIG REQUIRED)

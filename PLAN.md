@@ -1,6 +1,14 @@
 # MeshCore Test Plan
 
-Status: implemented locally; CI policy draft for review
+Status: test strategy with implemented CI mechanisms, explicitly identified
+policy proposals, and a historical implementation record.
+
+Use [docs/testing.md](docs/testing.md) for local commands and task-sized
+validation, and [docs/versioning.md](docs/versioning.md) for release acceptance.
+The workflow files define enabled jobs and triggers; this document does not
+establish remote branch-protection settings. Public headers, test sources, and
+inventory tools define the current API and coverage markers. Historical results
+at the end of this document are not evidence for the current checkout.
 
 This plan is for automated CI of the standalone MeshCore C library. Its two
 primary purposes are:
@@ -166,12 +174,8 @@ manifest groups such as `MESHCORE_PROTOCOL_PACKET_SOURCES` or
 Purpose: make sure tests are comparing against the intended upstream revision
 and that every compatibility-relevant upstream file is classified.
 
-Required checks:
-
-```sh
-python3 tools/upstream_lock_check.py --repo-root .
-python3 tools/meshcore_sync_report.py --repo-root .
-```
+Commands and reference requirements are maintained in the testing guide's
+[sync and boundary checks](docs/testing.md#sync-and-boundary-checks).
 
 Rules:
 
@@ -184,7 +188,8 @@ Rules:
 
 Acceptance:
 
-- all evidence files listed above are present in the locked reference checkout;
+- for strict upstream validation, all classified evidence files are present in
+  the locked reference checkout;
 - `upstream.lock`, `UPSTREAM.md`, and `ARCHITECTURE.md` agree;
 - every `src/*.c` file is covered by the source manifest;
 - no generic `include/` or `src/` file leaks Zephyr, Meshbus, Arduino, board,
@@ -265,8 +270,8 @@ Required runtime oracle scenarios:
 | TX done success/failure | dispatcher queue and pending response state advance according to upstream semantics. |
 | Local advert | flood and zero-hop advert requests serialize expected advert packet/app data. |
 | Peer advert replay | raw advert length and parser behavior match upstream; event payload preserves identity/app data. |
-| Peer message direct | known neighbor zero-hop path sends direct, not flood. |
-| Peer message unknown | non-neighbor with empty path or `MESHCORE_OUT_PATH_UNKNOWN` falls back to flood. |
+| Peer message direct | `has_out_path=true` selects a known direct route, including zero-hop when `out_path_byte_len=0`. |
+| Peer message unknown | Missing host path lookup or `has_out_path=false` falls back to flood; zero path bytes alone do not mean unknown. |
 | Peer message forced flood | `flood=true` overrides known direct path. |
 | Peer ACK | expected ACK correlation publishes message ACK and handles duplicate ACKs. |
 | Channel message | 16-byte and 32-byte secrets accepted; invalid secret lengths rejected; group text event target prefix matches secret prefix. |
@@ -284,7 +289,10 @@ Important contact/path invariant:
 - `has_out_path == true` with `out_path_byte_len == 0` is direct zero-hop.
 - `has_out_path == false` means the path is unknown and peer sends must fall
   back to flood.
-- Companion unknown/flood sentinel is `MESHCORE_OUT_PATH_UNKNOWN` (`0xff`).
+- Companion's encoded wire/storage path length uses
+  `MESHCORE_OUT_PATH_UNKNOWN` (`0xff`). The host peer-path ABI uses
+  `has_out_path` and `out_path_byte_len`; do not put the sentinel into its byte
+  count or infer route knowledge from that count alone.
 
 ### Parity Level 3: Differential Upstream Harness
 
@@ -302,17 +310,18 @@ Initial scope:
 
 Approach:
 
-- add an optional upstream oracle harness. The current implementation lives in
-  `tools/upstream_oracle.py`: it compiles selected upstream files from
-  `.reference/meshcore` in a scratch directory with minimal host stubs, links
+- the implemented upstream oracle harness, `tools/upstream_oracle.py`, compiles
+  selected upstream files from `.reference/meshcore` in a scratch directory
+  with minimal host stubs, links
   the current C library plus `tests/support/fake_platform.c`, and compares
   packet, advert, TXT, and inline identity helper behavior in-process;
-- generate JSON or binary fixtures from the upstream harness;
-- run the C tests against those fixtures.
+- generated JSON or binary fixtures remain a possible extension; the current
+  harness compares behavior in-process.
 
 Policy:
 
-- this job is release/manual/scheduled at first;
+- strict execution is required for release validation and runs in the
+  manual/scheduled upstream workflow;
 - it is allowed to be skipped in public PRs without `.reference/meshcore`;
 - it must not import board, RadioLib, BLE, Wi-Fi, display, button, sensor,
   serial, CLI, or concrete filesystem code.
@@ -324,16 +333,18 @@ that this C library is safe for hosts to consume.
 
 ### API Surface Inventory
 
-Add a small tool, `tools/api_surface_report.py`, that parses public headers and
-emits:
+`tools/api_surface_report.py` parses public headers and emits:
 
 - runtime functions from `include/meshcore/runtime.h`;
 - platform hook functions from `include/meshcore/platform.h`;
 - public structs/enums/constants from `include/meshcore/types.h`;
-- a coverage table mapping each public runtime function to at least one test
-  file and CTest label.
+- coverage markers mapping public runtime functions and types to test files,
+  plus the fake platform's hook implementations. CTest labels are maintained
+  in `tests/native/CMakeLists.txt`.
 
-PR acceptance after the tool exists:
+The native suite runs this inventory with its required-coverage options.
+Markers establish a static mapping, not execution or exhaustive behavioral
+coverage. The contract coverage requirements are:
 
 - every public runtime function must be listed in the API test coverage table;
 - every public struct/event type must have at least one size/field/limit or
@@ -359,30 +370,22 @@ the function contract makes one category impossible:
 - repeated call behavior where state is involved;
 - sanitizer-clean execution.
 
-Required runtime API coverage:
+Contract-specific cases supplement the categories above. This table groups
+behavior; use the public header and inventory report for the complete current
+function list, including delayed and explicit-route variants.
 
-| Public function | Required API tests |
+| API family | Contract-specific cases |
 | --- | --- |
-| `meshcore_init` | success, identity hook failure, policy hook failure if applicable, timer-arm failure, repeated init, deinit after failed init. |
-| `meshcore_deinit` | deinit before init, deinit after init, repeated deinit, no stale timer/event state. |
-| `meshcore_timer_fired` | before init, valid deadline, old/new timestamp, timer hook failure, next deadline scheduling. |
-| `meshcore_radio_rx_inject` | null data, zero len, max MTU, max-plus-one, invalid packet, valid packet event, SNR/RSSI propagation. |
-| `meshcore_radio_tx_done` | before init, no active TX, success, failure, queue advance, pending timeout interaction. |
-| `meshcore_node_advert_request` | flood true/false, before init, radio send failure, expected advert frame. |
-| `meshcore_node_peer_advert_request` | null advert, zero len, max advert, invalid advert, valid advert event. |
-| `meshcore_message_send_to_node` | null key, null payload, len 0/1/max/max+1, forced flood, known direct, unknown path flood, neighbor zero-hop direct, ACK attempt. |
-| `meshcore_message_send_to_channel` | null secret, secret len 0/15/16/32/33, null payload, payload len boundaries, expected group text frame. |
-| `meshcore_channel_data_send` | secret bounds, null path with zero len, non-null path, invalid path len, reserved/dev data type, payload bounds. |
-| `meshcore_node_discover_path_request` | null key, null tag, zero tag generation, caller tag preservation, path known/unknown behavior. |
-| `meshcore_node_trace_path_request` | null key, no path, known path, null tag, caller tag, expected trace frame. |
-| `meshcore_node_telemetry_request` | null key, permission masks 0/all/base/location/environment, tag generation, payload encoding. |
-| `meshcore_node_binary_request` | null key, null payload, payload len 0/max/max+1, generated tag. |
-| `meshcore_node_binary_request_with_tag` | all binary request tests plus zero tag generation, caller tag, duplicate tag behavior. |
-| `meshcore_node_anon_data_send` | null key, null payload, payload len 0/max/max+1, expected anonymous datagram. |
-| `meshcore_node_binary_response` | null request, null payload, direct response max, flood response reduced max, return path bounds. |
-| `meshcore_node_discover_request` | filter none/all/role-specific, prefix/full key, since 0/nonzero, tag generation. |
-| `meshcore_raw_data_send` | null path, path len 0/max/max+1, null payload, payload max/max+1. |
-| `meshcore_control_data_send` | null payload, len 0/max/max+1, byte0 bit7 unset/set, expected zero-hop control frame. |
+| Lifecycle | Identity/policy/timer hook failures, repeated init/deinit, deinit after failed init, no stale timer/event state. |
+| Timer and radio ingress | Old/new deadlines, next timer scheduling, invalid/valid RX frames, MTU bounds, SNR/RSSI propagation, TX completion without active TX, queue advance and pending timeout interaction. |
+| Local adverts and peer advert replay | Flood/zero-hop selection, radio send failure, advert bounds, invalid replay rejection and valid event publication. |
+| Peer messages | Forced flood, known direct, unknown path flood, known zero-hop direct, payload bounds and ACK attempt. |
+| Channel messages and data | Secret lengths 0/15/16/32/33, payload bounds, group text frame, null/explicit path and encoded length validation, reserved/dev data type. |
+| Discovery and trace | Key/path validation, unknown route behavior, null/generated/caller tags, explicit trace path bounds and expected trace frame, discover role filters, prefix/full key and timestamp filtering. The deprecated host-path trace entry returns `-ENOTSUP`. |
+| Telemetry | Permission masks 0/all/base/location/environment, tag generation and payload encoding. |
+| Binary requests and responses | Payload bounds, generated/caller/duplicate tags, null request, direct response maximum, reduced flood response maximum and return-path bounds. |
+| Anonymous datagrams | Payload bounds, flood, known direct and authenticated caller-supplied path behavior; explicit direct variants never fall back to flood, and delayed variants apply their route policy and minimum dispatcher delay. |
+| Raw and control data | Path/payload bounds, null path handling, control byte 0 bit 7 validation and zero-hop control frame. |
 
 ### Platform Hook Contract Tests
 
@@ -433,11 +436,18 @@ Required tests:
 
 ## CI Gates
 
+The implemented jobs and triggers are in
+[ci.yml](.github/workflows/ci.yml) and
+[upstream-evidence.yml](.github/workflows/upstream-evidence.yml). The first runs
+on PRs, pushes to `main`, and manual dispatch; the second runs on manual
+dispatch and a weekly schedule. Proposed additional triggers below are not
+enabled acceptance automation.
+
 ### Required PR Gate
 
 Purpose: run the smallest set that proves parity/API regressions are unlikely.
 
-Required jobs:
+Logical coverage requirements (the workflow groups these into jobs):
 
 - `sync-boundary`: `python3 tools/meshcore_sync_report.py --repo-root .`
 - `api-contract`: all public runtime API and public type tests.
@@ -446,32 +456,24 @@ Required jobs:
   direct/flood/unknown peer send, channel message, binary response bounds.
 - `strict-warnings`: Linux GCC or Clang with
   `-Wall -Wextra -Werror -Wpedantic`.
-- `asan-ubsan`: Linux Clang sanitizer run.
+- `asan-ubsan`: Linux sanitizer run.
 - `package-smoke`: install to temporary prefix and build minimal consumer.
 
-Baseline commands:
-
-```sh
-python3 tools/meshcore_sync_report.py --repo-root .
-cmake -S . -B build.meshcore-native \
-  -DMESHCORE_BUILD_TESTS=ON \
-  -DMESHCORE_BUILD_EXAMPLES=ON
-cmake --build build.meshcore-native --parallel
-ctest --test-dir build.meshcore-native --output-on-failure
-```
+Local commands are maintained in [docs/testing.md](docs/testing.md). Select
+local checks by changed contract; the CI matrix is not a per-edit itinerary.
 
 ### Cross-Platform Gate
 
 Purpose: catch compiler, path, and C ABI portability issues.
 
-Recommended matrix:
+Implemented matrix and deferred portability work:
 
 | OS | Compiler family | Requirement |
 | --- | --- | --- |
 | Ubuntu 24.04 | GCC | required |
 | Ubuntu 24.04 | Clang | required |
 | macOS 15 | AppleClang | required |
-| Windows 2025 | MSVC | advisory until first stable green run, then required |
+| Windows 2025 | MSVC | proposed advisory lane; not configured |
 
 Cross-platform jobs should run the same API/parity CTest labels. They are not a
 substitute for the API/parity suites.
@@ -480,42 +482,24 @@ substitute for the API/parity suites.
 
 Purpose: prove compatibility against the locked reference tree.
 
-Trigger:
+Enabled automation: manual `workflow_dispatch` and a weekly schedule.
+Release-branch, release-tag, and upstream-update triggers remain proposed.
+Their absence does not waive strict validation for a release or upstream sync;
+run the required checks for the relevant candidate within the authorized task.
 
-- release branch;
-- release tag;
-- upstream evidence update;
-- manual `workflow_dispatch`;
-- scheduled weekly job.
-
-Required setup:
-
-```sh
-mkdir -p .reference
-git clone https://github.com/meshcore-dev/MeshCore .reference/meshcore
-git -C .reference/meshcore fetch origin a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
-git -C .reference/meshcore checkout --detach a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e
-```
-
-Required checks:
-
-```sh
-python3 tools/upstream_lock_check.py --repo-root .
-python3 tools/meshcore_sync_report.py --repo-root .
-ctest --test-dir build.meshcore-native -L parity --output-on-failure
-```
-
-When the optional upstream differential harness exists, run it in this gate.
+Prepare the reference using [UPSTREAM.md](UPSTREAM.md#locked-reference), which
+reads the revision from `upstream.lock`. Follow
+[strict upstream validation](docs/testing.md#strict-upstream-validation) for
+commands. The compiled differential harness exists and is included in the
+upstream-evidence workflow.
 
 ### Fuzz And Stress Gate
 
 Purpose: find API and parser bugs beyond deterministic fixtures.
 
-Trigger:
-
-- nightly;
-- manual;
-- release branch.
+Current CI runs a bounded native fuzz smoke test. Extended nightly,
+manual stress, and release-branch stress lanes are proposed and are not
+configured in the current workflows.
 
 Targets:
 
@@ -530,7 +514,8 @@ Policy:
 
 - fuzzing does not need FoBE firmware;
 - crash reproducers become deterministic API or parity regression tests;
-- nightly fuzz failures block releases until triaged.
+- once extended lanes are enabled, their failures block releases until triaged;
+  existing fuzz smoke failures already fail their CI job.
 
 ### Coverage Gate
 
@@ -549,12 +534,16 @@ focused parser/support and runtime request groups.
 
 Policy:
 
-- initially report only;
-- after API inventory tooling exists, require 100% public runtime function
-  inventory coverage;
+- line/branch coverage is report-only;
+- public runtime function coverage markers are required by the implemented API
+  inventory test; they do not prove exhaustive behavioral coverage;
 - do not use a single global line coverage number as a release criterion.
 
 ## Required Checks By Change Type
+
+This table describes changed-contract coverage in CI and release review.
+Choose task-sized local execution through [docs/testing.md](docs/testing.md),
+reuse valid results, and identify any required evidence still missing.
 
 | Change type | Required checks |
 | --- | --- |
@@ -565,7 +554,7 @@ Policy:
 | Layer 2 runtime change | runtime oracle tests, API contract tests for touched entry points, sanitizer, strict upstream gate if evidence touched. |
 | Layer 3 boundary/package change | public-header tests, install/consumer smoke, cross-platform native. |
 | Upstream evidence update | strict upstream lock, fixture regeneration or explicit deferral, changed-layer parity tests. |
-| Documentation-only change | sync-boundary unless docs change architecture/evidence/release claims. |
+| Documentation-only change | Content, references and command consistency; sync-boundary for architecture/evidence/boundary claims, and supporting evidence for changed release claims. |
 | Release tag | PR gate, cross-platform gate, strict upstream parity gate, package smoke, coverage report, fuzz/stress review. |
 
 ## Pass/Fail Policy
@@ -578,16 +567,16 @@ Required PR failures:
 - Any runtime oracle smoke scenario fails.
 - `meshcore_sync_report.py` reports a failure.
 - CMake configure/build fails.
-- warning-as-error build fails after enabled.
-- sanitizer reports a finding after enabled.
-- install/consumer smoke fails after enabled.
+- warning-as-error build fails.
+- sanitizer reports a finding.
+- install/consumer smoke fails.
 
 Allowed PR warnings:
 
 - missing `.reference/meshcore` warning from sync report, only when
   repository-local checks pass;
-- Windows advisory failure during bring-up;
-- coverage percentage below future thresholds before coverage policy is active.
+- coverage percentage below proposed thresholds; line/branch thresholds are not
+  currently enforced. Windows has no configured job to produce a result.
 
 Required release failures:
 
@@ -597,7 +586,10 @@ Required release failures:
 - any public runtime function without API contract coverage;
 - package cannot be consumed through `find_package(meshcore CONFIG REQUIRED)`.
 
-## Implementation Order
+## Historical Implementation Order
+
+The original rollout sequence is retained for context. It is not a current
+task list or evidence that every proposed CI policy has been enabled.
 
 1. Add CTest labels and split existing tests into `api`, `parity`, `runtime`,
    and `boundary` groups without changing public ABI.
@@ -617,9 +609,11 @@ Required release failures:
 9. Add strict upstream parity workflow with locked `.reference/meshcore`.
 10. Add fuzz/stress and coverage jobs.
 
-## Acceptance Criteria
+## Original Rollout Acceptance Criteria
 
-The plan is implemented when:
+These criteria defined the test-infrastructure rollout. They are not a demand
+to rebuild all infrastructure during each library task, and the historical
+results below do not certify the current tree:
 
 - all public runtime functions have API contract coverage in the inventory
   report;
@@ -627,7 +621,7 @@ The plan is implemented when:
 - all public event structs are covered by at least one publication or ABI test;
 - all Layer 1 protocol/support evidence areas have golden-vector or explicit
   parity tests;
-- Layer 2 runtime oracle covers direct, flood, unknown path, neighbor zero-hop,
+- Layer 2 runtime oracle covers direct, flood, unknown path, known zero-hop,
   ACK, pending request, timer, radio RX/TX, telemetry, binary response, node
   discover, raw data, and control data;
 - strict upstream evidence checks pass against the locked `.reference/meshcore`
@@ -638,10 +632,15 @@ The plan is implemented when:
   `meshcore::meshcore` work from a temporary prefix;
 - sanitizer and strict warning jobs are clean on Linux.
 
-## Current Local Validation
+## Historical Local Validation
 
-These checks were run from the repository root while implementing and reviewing
-the CI test plan:
+The original implementation record below used upstream evidence
+`a3a1aa5e3be34b42d8ac8c2cc244d30af6cdd71e`. It predates the current lock and
+later public API additions. Preserve its commands, counts, and results as a
+historical snapshot; do not use them as current setup instructions or release
+evidence. Current commands are maintained in [docs/testing.md](docs/testing.md).
+
+The following commands were recorded during that original validation:
 
 ```sh
 cmake -S . -B build.meshcore-native \
