@@ -81,22 +81,10 @@ Expected validation style:
 
 ### Layer 2: Runtime
 
-Upstream evidence files:
-
-- `.reference/meshcore/src/helpers/BaseChatMesh.h`
-- `.reference/meshcore/src/helpers/BaseChatMesh.cpp`
-- `.reference/meshcore/src/helpers/TxtDataHelpers.h`
-- `.reference/meshcore/src/helpers/TxtDataHelpers.cpp`
-- `.reference/meshcore/src/helpers/AdvertDataHelpers.h`
-- `.reference/meshcore/src/helpers/AdvertDataHelpers.cpp`
-- `.reference/meshcore/src/helpers/ContactInfo.h`
-- `.reference/meshcore/src/helpers/ChannelDetails.h`
-- `.reference/meshcore/examples/companion_radio/main.cpp`
-- `.reference/meshcore/examples/companion_radio/MyMesh.h`
-- `.reference/meshcore/examples/companion_radio/MyMesh.cpp`
-- `.reference/meshcore/examples/companion_radio/NodePrefs.h`
-- `.reference/meshcore/examples/companion_radio/DataStore.h`
-- `.reference/meshcore/examples/companion_radio/DataStore.cpp`
+Use the canonical [runtime evidence list](UPSTREAM.md#runtime-evidence) for
+chat, companion, and server behavior, plus the
+[promoted support helpers](UPSTREAM.md#promoted-support-helpers) for TXT and
+advert payload formats. Select the evidence that owns the affected behavior.
 
 Target C surfaces:
 
@@ -138,22 +126,19 @@ Expected validation style:
 
 ## Test Architecture
 
-Recommended test layout:
+Current test layout:
 
 ```text
 tests/
-  api/                 public API contract tests
-  parity/              upstream parity and golden-vector tests
-  native/              CTest entry points, may be split by layer
+  native/              CTest entry points, API/parity tests, inline vectors,
+                       and the fuzz smoke harness
+  oracle/              compiled upstream runtime harness template
   support/
     fake_platform.*    configurable fake host/platform harness
-    oracle_host.*      runtime oracle helpers
-    fixtures/          checked-in generated fixtures
-  fuzz/                parser/runtime fuzz harnesses
 ```
 
-Native tests can stay under `tests/native` initially, but the CTest targets
-should be labelled by purpose:
+Keep tests with their existing suites unless a responsibility change warrants
+moving them. Use CTest labels to select coverage by purpose:
 
 - `api`
 - `parity`
@@ -207,9 +192,10 @@ Fixture source:
 
 Fixture policy:
 
-- fixtures live under `tests/support/fixtures`;
-- fixture filenames include the upstream evidence area, for example
-  `packet_read_write_v1.json` or `advert_data_vectors.json`;
+- current golden vectors are embedded in C tests under `tests/native`;
+- use separate files under `tests/support/fixtures` when generated or shared
+  data benefits from them; name those files for the upstream evidence area,
+  for example `packet_read_write_v1.json` or `advert_data_vectors.json`;
 - fixture regeneration is manual or scheduled, never silent in ordinary PR CI;
 - a changed fixture requires explaining whether upstream changed or the C port
   was previously wrong.

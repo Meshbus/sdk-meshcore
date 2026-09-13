@@ -92,9 +92,14 @@ These files define observable runtime behavior for the host-driven C runtime:
 - `.reference/meshcore/examples/companion_radio/NodePrefs.h`
 - `.reference/meshcore/examples/companion_radio/DataStore.h`
 - `.reference/meshcore/examples/companion_radio/DataStore.cpp`
+- `.reference/meshcore/examples/simple_repeater/MyMesh.cpp`
+- `.reference/meshcore/examples/simple_room_server/MyMesh.h`
+- `.reference/meshcore/examples/simple_room_server/MyMesh.cpp`
+- `.reference/meshcore/examples/simple_sensor/SensorMesh.cpp`
 
-Example files are runtime and adapter evidence only. They do not define
-generic protocol-core architecture.
+The server files supply CLI reply branches and role-specific delay constants
+used by the compiled runtime oracle. Example files are runtime and adapter
+evidence only. They do not define generic protocol-core architecture.
 
 ### Host Adapter Or Excluded Evidence
 

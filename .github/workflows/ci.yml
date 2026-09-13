@@ -30,7 +30,7 @@ jobs:
       - name: Build
         run: cmake --build build.meshcore-native --parallel
       - name: API and boundary tests
-        run: ctest --test-dir build.meshcore-native -L "api|boundary" --output-on-failure
+        run: ctest --test-dir build.meshcore-native -L "api|boundary" -LE package --output-on-failure
       - name: Package smoke
         run: ctest --test-dir build.meshcore-native -L package --output-on-failure
 
@@ -100,7 +100,7 @@ jobs:
       - name: Build
         run: cmake --build build.meshcore-sanitize --parallel
       - name: Test
-        run: ctest --test-dir build.meshcore-sanitize -LE package --output-on-failure
+        run: ctest --test-dir build.meshcore-sanitize -LE "package|fuzz" --output-on-failure
       - name: Fuzz smoke
         run: ctest --test-dir build.meshcore-sanitize -L fuzz --output-on-failure
 

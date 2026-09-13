@@ -16,6 +16,7 @@
  * .reference/meshcore/src/helpers/BaseChatMesh.cpp
  * .reference/meshcore/examples/companion_radio/MyMesh.cpp
  * .reference/meshcore/examples/simple_repeater/MyMesh.cpp
+ * .reference/meshcore/examples/simple_room_server/MyMesh.h
  * .reference/meshcore/examples/simple_room_server/MyMesh.cpp
  * .reference/meshcore/examples/simple_sensor/SensorMesh.cpp
  */
