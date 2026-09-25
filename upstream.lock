@@ -1,0 +1,14 @@
+# MeshCore upstream reference lock.
+#
+# This file is intentionally simple so lightweight tools can parse it without
+# extra dependencies. Paths are relative to the MeshCore repository root.
+
+reference_path=.reference/meshcore
+base_tag=companion-v1.17.1
+version_kind=dev
+commit=b599bc511751de3681e8b9e1d7f7a31d5d0dad4b
+description=dev: Merge pull request #3389 from jbrazio/fix/set-af-validation
+
+# Evidence roots used by the stabilized C-library architecture.
+protocol_core_root=.reference/meshcore/src
+runtime_examples_root=.reference/meshcore/examples

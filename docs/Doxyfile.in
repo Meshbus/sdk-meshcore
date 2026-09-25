@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+PROJECT_NAME           = "MeshCore C Library"
+PROJECT_NUMBER         = "@MESHCORE_VERSION_STRING@"
+OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@/docs"
+INPUT                  = "@CMAKE_CURRENT_SOURCE_DIR@/include/meshcore" \
+                         "@CMAKE_CURRENT_SOURCE_DIR@/docs/api-main.dox"
+FILE_PATTERNS          = *.h *.dox
+RECURSIVE              = NO
+OPTIMIZE_OUTPUT_FOR_C  = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = NO
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_AS_ERROR          = YES

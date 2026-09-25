@@ -1,0 +1,256 @@
+name: meshcore-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshcore-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zephyr:
+    name: zephyr / library parity / native_sim
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/meshbus/sdk-meshbus-builder@sha256:a9e5ef18699d0bc0f65e4a53e177229510f7e044dbed36cffd73370c1740081c
+    defaults:
+      run:
+        shell: bash
+    env:
+      ZEPHYR_TOOLCHAIN_VARIANT: host
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned isolated Zephyr workspace
+        run: |
+          set -euo pipefail
+          workspace="${RUNNER_TEMP}/meshcore-zephyr"
+          mkdir -p "${workspace}/.west" "${workspace}/manifest" "${workspace}/modules/crypto"
+          cat > "${workspace}/manifest/west.yml" <<'YAML'
+          manifest:
+            projects:
+              - name: zephyr
+                url: https://github.com/Meshbus/sdk-zephyr.git
+                revision: 4adceb2f861d6a6de67e348c329e12735c21e8f0
+                path: zephyr
+                west-commands: scripts/west-commands.yml
+              - name: mbedtls
+                url: https://github.com/zephyrproject-rtos/mbedtls
+                revision: c43f34b93797e81fd0257c30004dcd0ae332ae51
+                path: modules/crypto/mbedtls
+              - name: tf-psa-crypto
+                url: https://github.com/zephyrproject-rtos/tf-psa-crypto
+                revision: 765af96a20a2b408474dcd950372ba9af4d26b62
+                path: modules/crypto/tf-psa-crypto
+            self:
+              path: manifest
+          YAML
+          cat > "${workspace}/.west/config" <<'INI'
+          [manifest]
+          path = manifest
+          file = west.yml
+          [zephyr]
+          base = zephyr
+          INI
+          fetch_fixed() {
+            local destination="$1" url="$2" revision="$3"
+            git init -q "${destination}"
+            git -C "${destination}" -c credential.helper= fetch --depth=1 "${url}" "${revision}"
+            git -C "${destination}" checkout --detach FETCH_HEAD
+            test "$(git -C "${destination}" rev-parse HEAD)" = "${revision}"
+          }
+          fetch_fixed "${workspace}/zephyr" https://github.com/Meshbus/sdk-zephyr.git 4adceb2f861d6a6de67e348c329e12735c21e8f0
+          fetch_fixed "${workspace}/modules/crypto/mbedtls" https://github.com/zephyrproject-rtos/mbedtls c43f34b93797e81fd0257c30004dcd0ae332ae51
+          fetch_fixed "${workspace}/modules/crypto/tf-psa-crypto" https://github.com/zephyrproject-rtos/tf-psa-crypto 765af96a20a2b408474dcd950372ba9af4d26b62
+          ln -s "${GITHUB_WORKSPACE}" "${workspace}/meshcore"
+          printf 'Zephyr %s\nMbed TLS %s\nTF-PSA-Crypto %s\n' \
+            "$(git -C "${workspace}/zephyr" rev-parse HEAD)" \
+            "$(git -C "${workspace}/modules/crypto/mbedtls" rev-parse HEAD)" \
+            "$(git -C "${workspace}/modules/crypto/tf-psa-crypto" rev-parse HEAD)"
+      - name: Prepare locked upstream evidence
+        run: |
+          set -euo pipefail
+          commit="$(sed -n 's/^commit=//p' upstream.lock)"
+          test -n "${commit}"
+          reference="${GITHUB_WORKSPACE}/.reference/meshcore"
+          git init -q "${reference}"
+          git -C "${reference}" -c credential.helper= fetch --depth=1 https://github.com/meshcore-dev/MeshCore.git "${commit}"
+          git -C "${reference}" checkout --detach FETCH_HEAD
+          python3 tools/upstream_lock_check.py --repo-root .
+      - name: Check migrated evidence ledgers
+        run: |
+          set -euo pipefail
+          python3 tests/zephyr/protocol/tools/check_protocol_api_map.py --repo-root .
+          python3 tests/zephyr/runtime/tools/check_runtime_api_map.py --repo-root .
+          python3 tests/zephyr/runtime/oracle/tools/check_test_cases_sync.py \
+            --src-dir tests/zephyr/runtime/oracle/src \
+            --cases tests/zephyr/runtime/oracle/test_cases.md
+      - name: Check migrated fixture licenses
+        run: |
+          set -euo pipefail
+          find tests/zephyr -type f -print0 | xargs -0 reuse lint-file -q
+          reuse lint-file -q docs/test-fixtures.md
+      - name: Execute all MeshCore Zephyr scenarios
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/meshcore-zephyr"
+          west twister -T "${GITHUB_WORKSPACE}/tests/zephyr" -p native_sim \
+            --integration --filter runnable -O twister-out --inline-logs -j 2 -c \
+            2>&1 | tee twister.log
+          python3 "${GITHUB_WORKSPACE}/tests/zephyr/tools/check_twister_results.py" \
+            --tests-root "${GITHUB_WORKSPACE}/tests/zephyr" \
+            --report twister-out/twister.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: meshcore-zephyr-twister
+          path: |
+            ${{ runner.temp }}/meshcore-zephyr/twister.log
+            ${{ runner.temp }}/meshcore-zephyr/twister-out
+          if-no-files-found: warn
+
+  documentation:
+    name: documentation / links / public API
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check local documentation
+        run: python3 tools/check_docs.py --repo-root .
+      - name: Install documentation generator
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y doxygen
+      - name: Configure API documentation
+        run: >
+          cmake -S . -B build.meshcore-docs
+          -DMESHCORE_BUILD_DOCS=ON
+          -DMESHCORE_BUILD_TESTS=OFF
+          -DMESHCORE_BUILD_EXAMPLES=OFF
+          -DMESHCORE_INSTALL=OFF
+      - name: Generate public API reference
+        run: cmake --build build.meshcore-docs --target meshcore_docs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meshcore-api-reference
+          path: build.meshcore-docs/docs/html
+          if-no-files-found: error
+
+  boundary:
+    name: boundary / api / package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync and boundary report
+        run: python3 tools/meshcore_sync_report.py --repo-root .
+      - name: Configure
+        run: >
+          cmake -S . -B build.meshcore-native
+          -DMESHCORE_BUILD_TESTS=ON
+          -DMESHCORE_BUILD_EXAMPLES=ON
+          -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build.meshcore-native --parallel
+      - name: API and boundary tests
+        run: ctest --test-dir build.meshcore-native -L "api|boundary" -LE package --output-on-failure
+      - name: Package smoke
+        run: ctest --test-dir build.meshcore-native -L package --output-on-failure
+
+  native:
+    name: native / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-24.04-gcc-debug
+            os: ubuntu-24.04
+            build_type: Debug
+            compiler_arg: -DCMAKE_C_COMPILER=gcc
+          - name: ubuntu-24.04-clang-debug
+            os: ubuntu-24.04
+            build_type: Debug
+            compiler_arg: -DCMAKE_C_COMPILER=clang
+          - name: macos-15-appleclang-debug
+            os: macos-15
+            build_type: Debug
+            compiler_arg: ""
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build.meshcore-native
+          -DMESHCORE_BUILD_TESTS=ON
+          -DMESHCORE_BUILD_EXAMPLES=ON
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          ${{ matrix.compiler_arg }}
+      - name: Build
+        run: cmake --build build.meshcore-native --config ${{ matrix.build_type }} --parallel
+      - name: Test
+        run: ctest --test-dir build.meshcore-native -C ${{ matrix.build_type }} -LE package --output-on-failure
+
+  strict:
+    name: strict warnings / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build.meshcore-werror
+          -DMESHCORE_BUILD_TESTS=ON
+          -DMESHCORE_BUILD_EXAMPLES=ON
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_FLAGS="-Wall -Wextra -Werror -Wpedantic"
+      - name: Build
+        run: cmake --build build.meshcore-werror --parallel
+      - name: Test
+        run: ctest --test-dir build.meshcore-werror -LE package --output-on-failure
+
+  sanitize:
+    name: asan-ubsan / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build.meshcore-sanitize
+          -DMESHCORE_BUILD_TESTS=ON
+          -DMESHCORE_BUILD_EXAMPLES=ON
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build.meshcore-sanitize --parallel
+      - name: Test
+        run: ctest --test-dir build.meshcore-sanitize -LE "package|fuzz" --output-on-failure
+      - name: Fuzz smoke
+        run: ctest --test-dir build.meshcore-sanitize -L fuzz --output-on-failure
+
+  coverage:
+    name: coverage report / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build.meshcore-coverage
+          -DMESHCORE_BUILD_TESTS=ON
+          -DMESHCORE_BUILD_EXAMPLES=ON
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=gcc
+          -DCMAKE_C_FLAGS="--coverage -O0 -g"
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+      - name: Build
+        run: cmake --build build.meshcore-coverage --parallel
+      - name: Test
+        run: ctest --test-dir build.meshcore-coverage --output-on-failure
+      - name: Coverage report
+        run: >
+          python3 tools/coverage_report.py
+          --repo-root .
+          --build-dir build.meshcore-coverage
+          --require-data

@@ -1,0 +1,35 @@
+# Copyright (c) 2026 FoBE Studio
+# SPDX-License-Identifier: Apache-2.0
+
+# Tracked metadata works for source archives and embedded builds without Git.
+set(_meshcore_lock "${CMAKE_CURRENT_LIST_DIR}/../upstream.lock")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_meshcore_lock}")
+foreach(_meshcore_key base_tag version_kind commit)
+  file(STRINGS "${_meshcore_lock}" _meshcore_entry
+    REGEX "^${_meshcore_key}=")
+  list(LENGTH _meshcore_entry _meshcore_count)
+  if(NOT _meshcore_count EQUAL 1)
+    message(FATAL_ERROR "upstream.lock requires exactly one ${_meshcore_key}")
+  endif()
+  string(REGEX REPLACE "^[^=]+=" "" _meshcore_${_meshcore_key} "${_meshcore_entry}")
+endforeach()
+
+if(NOT _meshcore_base_tag MATCHES "^companion-v([0-9]+[.][0-9]+[.][0-9]+)$")
+  message(FATAL_ERROR "Unsupported upstream base_tag: ${_meshcore_base_tag}")
+endif()
+set(MESHCORE_VERSION_NUMBER "${CMAKE_MATCH_1}")
+string(LENGTH "${_meshcore_commit}" _meshcore_commit_length)
+if(NOT _meshcore_commit_length EQUAL 40 OR NOT _meshcore_commit MATCHES "^[0-9a-f]+$")
+  message(FATAL_ERROR "upstream.lock commit must be a full lowercase SHA-1")
+endif()
+set(MESHCORE_UPSTREAM_TAG "${_meshcore_base_tag}")
+set(MESHCORE_UPSTREAM_COMMIT "${_meshcore_commit}")
+set(MESHCORE_VERSION_KIND "${_meshcore_version_kind}")
+if(MESHCORE_VERSION_KIND STREQUAL "dev")
+  string(SUBSTRING "${MESHCORE_UPSTREAM_COMMIT}" 0 12 _meshcore_short_commit)
+  set(MESHCORE_VERSION_STRING "${MESHCORE_UPSTREAM_TAG}-dev.${_meshcore_short_commit}")
+elseif(MESHCORE_VERSION_KIND STREQUAL "release")
+  set(MESHCORE_VERSION_STRING "${MESHCORE_UPSTREAM_TAG}")
+else()
+  message(FATAL_ERROR "upstream.lock version_kind must be dev or release")
+endif()

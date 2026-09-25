@@ -1,0 +1,175 @@
+# SPDX-FileCopyrightText: 2026 FoBE Studio
+# SPDX-License-Identifier: Apache-2.0
+version = 1
+
+# Exact reviewed files only; new copied files require their own review.
+# See docs/test-fixtures.md at the repository root.
+# Existing upstream headers and permission notices remain authoritative.
+
+# Add the MIT identifier while retaining each original copyright/year.
+[[annotations]]
+path = [
+    "Crypto/.piopm",
+    "Crypto/AES.h",
+    "Crypto/AES128.cpp",
+    "Crypto/AES192.cpp",
+    "Crypto/AES256.cpp",
+    "Crypto/AESCommon.cpp",
+    "Crypto/AESEsp32.cpp",
+    "Crypto/AuthenticatedCipher.cpp",
+    "Crypto/AuthenticatedCipher.h",
+    "Crypto/BLAKE2b.cpp",
+    "Crypto/BLAKE2b.h",
+    "Crypto/BLAKE2s.cpp",
+    "Crypto/BLAKE2s.h",
+    "Crypto/BigNumberUtil.cpp",
+    "Crypto/BigNumberUtil.h",
+    "Crypto/BlockCipher.cpp",
+    "Crypto/BlockCipher.h",
+    "Crypto/CTR.cpp",
+    "Crypto/CTR.h",
+    "Crypto/ChaCha.cpp",
+    "Crypto/ChaCha.h",
+    "Crypto/ChaChaPoly.cpp",
+    "Crypto/ChaChaPoly.h",
+    "Crypto/Cipher.cpp",
+    "Crypto/Cipher.h",
+    "Crypto/Crypto.cpp",
+    "Crypto/Crypto.h",
+    "Crypto/Curve25519.cpp",
+    "Crypto/Curve25519.h",
+    "Crypto/EAX.cpp",
+    "Crypto/EAX.h",
+    "Crypto/Ed25519.cpp",
+    "Crypto/Ed25519.h",
+    "Crypto/GCM.cpp",
+    "Crypto/GCM.h",
+    "Crypto/GF128.cpp",
+    "Crypto/GF128.h",
+    "Crypto/GHASH.cpp",
+    "Crypto/GHASH.h",
+    "Crypto/HKDF.cpp",
+    "Crypto/HKDF.h",
+    "Crypto/Hash.cpp",
+    "Crypto/Hash.h",
+    "Crypto/KeccakCore.cpp",
+    "Crypto/KeccakCore.h",
+    "Crypto/NoiseSource.cpp",
+    "Crypto/NoiseSource.h",
+    "Crypto/OMAC.cpp",
+    "Crypto/OMAC.h",
+    "Crypto/P521.cpp",
+    "Crypto/P521.h",
+    "Crypto/Poly1305.cpp",
+    "Crypto/Poly1305.h",
+    "Crypto/RNG.cpp",
+    "Crypto/RNG.h",
+    "Crypto/SHA224.cpp",
+    "Crypto/SHA224.h",
+    "Crypto/SHA256.cpp",
+    "Crypto/SHA256.h",
+    "Crypto/SHA3.cpp",
+    "Crypto/SHA3.h",
+    "Crypto/SHA384.cpp",
+    "Crypto/SHA384.h",
+    "Crypto/SHA512.cpp",
+    "Crypto/SHA512.h",
+    "Crypto/SHAKE.cpp",
+    "Crypto/SHAKE.h",
+    "Crypto/XOF.cpp",
+    "Crypto/XOF.h",
+    "Crypto/XTS.cpp",
+    "Crypto/XTS.h",
+    "Crypto/examples/AES128_Basics/AES128_Basics.ino",
+    "Crypto/examples/TestAES/TestAES.ino",
+    "Crypto/examples/TestAESSmall/TestAESSmall.ino",
+    "Crypto/examples/TestAESTiny/TestAESTiny.ino",
+    "Crypto/examples/TestBLAKE2b/TestBLAKE2b.ino",
+    "Crypto/examples/TestBLAKE2s/TestBLAKE2s.ino",
+    "Crypto/examples/TestBigNumberUtil/TestBigNumberUtil.ino",
+    "Crypto/examples/TestCTR/TestCTR.ino",
+    "Crypto/examples/TestChaCha/TestChaCha.ino",
+    "Crypto/examples/TestChaChaPoly/TestChaChaPoly.ino",
+    "Crypto/examples/TestCurve25519/TestCurve25519.ino",
+    "Crypto/examples/TestCurve25519Math/TestCurve25519Math.ino",
+    "Crypto/examples/TestEAX/TestEAX.ino",
+    "Crypto/examples/TestEd25519/TestEd25519.ino",
+    "Crypto/examples/TestGCM/TestGCM.ino",
+    "Crypto/examples/TestGHASH/TestGHASH.ino",
+    "Crypto/examples/TestHKDF/TestHKDF.ino",
+    "Crypto/examples/TestP521/TestP521.ino",
+    "Crypto/examples/TestP521Math/TestP521Math.ino",
+    "Crypto/examples/TestPoly1305/TestPoly1305.ino",
+    "Crypto/examples/TestRNG/TestRNG.ino",
+    "Crypto/examples/TestSHA224/TestSHA224.ino",
+    "Crypto/examples/TestSHA256/TestSHA256.ino",
+    "Crypto/examples/TestSHA384/TestSHA384.ino",
+    "Crypto/examples/TestSHA3_256/TestSHA3_256.ino",
+    "Crypto/examples/TestSHA3_512/TestSHA3_512.ino",
+    "Crypto/examples/TestSHA512/TestSHA512.ino",
+    "Crypto/examples/TestSHAKE128/TestSHAKE128.ino",
+    "Crypto/examples/TestSHAKE256/TestSHAKE256.ino",
+    "Crypto/examples/TestXTS/TestXTS.ino",
+    "Crypto/keywords.txt",
+    "Crypto/library.json",
+    "Crypto/utility/EndianUtil.h",
+    "Crypto/utility/LimbUtil.h",
+    "Crypto/utility/ProgMemUtil.h",
+    "Crypto/utility/RotateUtil.h",
+]
+precedence = "aggregate"
+SPDX-License-Identifier = "MIT"
+
+# Author recorded by the upstream README and Crypto package metadata.
+[[annotations]]
+path = [
+    "Crypto/examples/TestRNG/TestRNG.ino",
+    "Crypto/keywords.txt",
+    "Crypto/library.json",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Rhys Weatherley"
+SPDX-License-Identifier = "MIT"
+
+# Generated factual package identity/version record; no creative source code.
+[[annotations]]
+path = [
+    "Crypto/.piopm",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "MIT"
+
+# All 17 files match the locked MeshCore copy; upstream licenses all code Zlib.
+[[annotations]]
+path = [
+    "ed25519/add_scalar.c",
+    "ed25519/ed_25519.h",
+    "ed25519/fe.c",
+    "ed25519/fe.h",
+    "ed25519/fixedint.h",
+    "ed25519/ge.c",
+    "ed25519/ge.h",
+    "ed25519/key_exchange.c",
+    "ed25519/keypair.c",
+    "ed25519/precomp_data.h",
+    "ed25519/sc.c",
+    "ed25519/sc.h",
+    "ed25519/seed.c",
+    "ed25519/sha512.c",
+    "ed25519/sha512.h",
+    "ed25519/sign.c",
+    "ed25519/verify.c",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2015 Orson Peters <orsonpeters@gmail.com>"
+SPDX-License-Identifier = "Zlib"
+
+# Retain the additional LibTomCrypt author attribution from the source banner.
+[[annotations]]
+path = [
+    "ed25519/sha512.c",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Tom St Denis"
+SPDX-License-Identifier = "Zlib"

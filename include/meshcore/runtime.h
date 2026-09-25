@@ -1,0 +1,448 @@
+/* FoBE Studio contributions: Apache-2.0; upstream-derived portions: MIT.
+ * See LICENSING.md and LICENSES/MIT-MeshCore.txt. */
+/*
+ * Copyright (c) 2026 FoBE Studio
+ *
+ * SPDX-License-Identifier: Apache-2.0 AND MIT
+ */
+
+/**
+ * @file
+ * @brief Host-callable MeshCore runtime API.
+ */
+
+#ifndef MESHCORE_RUNTIME_H_
+#define MESHCORE_RUNTIME_H_
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "meshcore/types.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @defgroup meshcore_runtime MeshCore Runtime API
+ * @brief Host-callable singleton MeshCore runtime functions.
+ * @ingroup meshcore
+ *
+ * This header is the callable protocol-engine boundary. It exposes no product
+ * SDK, RTOS, host-storage, transport, or C++ dependency surface.
+ *
+ * Runtime model:
+ * - single process-wide runtime instance per node
+ * - single-threaded and non-reentrant
+ * - host-driven through typed requests, radio RX/TX injection, and timer expiry
+ *
+ * Callback rules:
+ * - platform callbacks run synchronously from meshcore_*() entry points
+ * - callbacks must not call back into meshcore_*() APIs
+ * - hosts that need blocking work should enqueue it outside this library
+ *
+ * Host implementation hooks are declared by @ref meshcore_platform. The runtime
+ * binds directly to those link-time hooks.
+ *
+ * Synchronous request calls return 0 only after the outbound queue owns the
+ * packet. Common failures are `-EINVAL` for invalid arguments, `-ENODEV`
+ * before initialization and `-ENOBUFS` when packet, outbound-queue, or
+ * expected-ACK capacity is exhausted. Other negative platform-hook results
+ * propagate unchanged.
+ *
+ * A timer-arm failure during initialization fails @ref meshcore_init and rolls
+ * the runtime back. A timer-arm failure after a packet is successfully queued
+ * is reported through @ref meshcore_platform_runtime_request_error while the
+ * request call still returns 0.
+ *
+ * @{
+ */
+
+/**
+ * @brief Initialize the process-wide MeshCore runtime.
+ *
+ * The host must link concrete hook implementations declared by
+ * meshcore/platform.h before this function can be used.
+ *
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_init(void);
+
+/**
+ * @brief Release runtime resources.
+ *
+ * After deinitialization, the host must call meshcore_init() again before using
+ * other runtime entry points.
+ */
+void meshcore_deinit(void);
+
+/**
+ * @brief Inject a fired runtime timer.
+ *
+ * @param now_ms Current host uptime in milliseconds.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_timer_fired(uint32_t now_ms);
+
+/**
+ * @brief Inject a received raw radio frame.
+ *
+ * @param data Serialized frame bytes.
+ * @param len Number of bytes in @p data.
+ * @param rssi_dbm Receive RSSI in dBm.
+ * @param snr_q4 Receive SNR in quarter-dB units.
+ * @param now_ms Current host uptime in milliseconds.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_radio_rx_inject(const uint8_t *data, size_t len,
+                             int16_t rssi_dbm, int8_t snr_q4,
+                             uint32_t now_ms);
+
+/**
+ * @brief Inject radio TX completion for the active outbound frame.
+ *
+ * @param now_ms Current host uptime in milliseconds.
+ * @param success true when radio transmission completed successfully.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_radio_tx_done(uint32_t now_ms, bool success);
+
+/**
+ * @brief Request a local advert transmission.
+ *
+ * @param flood true to publish as a flood advert, false for local routing.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_advert_request(bool flood);
+
+/**
+ * @brief Request replay of a raw advert captured by the host.
+ *
+ * @param raw_advert Serialized advert bytes.
+ * @param raw_advert_len Number of bytes in @p raw_advert.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_peer_advert_request(const uint8_t *raw_advert,
+                                      size_t raw_advert_len);
+
+/**
+ * @brief Send a text message to a peer public key.
+ *
+ * @param public_key Full peer public key.
+ * @param flood true to force flood routing; false to prefer a known path.
+ * @param attempt Caller-provided ACK correlation token.
+ * @param payload Message payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_message_send_to_node(const uint8_t *public_key, bool flood,
+                                  uint8_t attempt,
+                                  const uint8_t *payload,
+                                  size_t payload_len);
+
+/**
+ * @brief Send a text message to a channel.
+ *
+ * @param secret Full channel secret.
+ * @param secret_len Number of bytes in @p secret.
+ * @param payload Message payload bytes.
+ * @param payload_len Number of bytes in @p payload. To match upstream
+ * BaseChatMesh behavior, the transmitted tail is truncated when the sender
+ * name prefix and payload exceed @ref MESHCORE_MAX_MESSAGE_TX_LEN.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_message_send_to_channel(const uint8_t *secret, size_t secret_len,
+                                     const uint8_t *payload,
+                                     size_t payload_len);
+
+/**
+ * @brief Send CLI data or an explicit command to a peer.
+ *
+ * Uses a unique local RTC timestamp and a known direct path (including zero
+ * hops), otherwise flood. No message ACK or retry state is registered.
+ *
+ * @param public_key Full peer public key.
+ * @param type MESHCORE_COMMON_CLI_DATA or MESHCORE_COMMON_CLI_COMMAND.
+ * @param attempt Attempt bits, in the range 0-3.
+ * @param text Borrowed text bytes without embedded NUL.
+ * @param text_len Text byte count, from 1 to MESHCORE_MAX_MESSAGE_TX_LEN.
+ * @return 0 when queued, -EINVAL for invalid input/path, -ENOBUFS for pool
+ * exhaustion, or a negative host error. Do not call from platform callbacks.
+ */
+int meshcore_cli_send_to_node(const uint8_t *public_key,
+                              meshcore_common_cli_type_t type, uint8_t attempt,
+                              const char *text, size_t text_len);
+
+/**
+ * @brief Send a binary datagram to a channel.
+ *
+ * @param secret Full channel secret.
+ * @param secret_len Number of bytes in @p secret.
+ * @param path Direct path bytes, or NULL for zero hops or an unknown path.
+ * @param path_len Wire path-length field: upper two bits encode hash width
+ * minus one (width 1-3), lower six bits encode hop count. The buffer contains
+ * width times hop-count bytes, at most MESHCORE_MAX_PATH_LEN. Zero hops is
+ * direct; MESHCORE_OUT_PATH_UNKNOWN selects flood and ignores @p path.
+ * @param data_type Application data type.
+ * @param payload Datagram payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_channel_data_send(const uint8_t *secret, size_t secret_len,
+                               const uint8_t *path, uint8_t path_len,
+                               uint16_t data_type, const uint8_t *payload,
+                               size_t payload_len);
+
+/**
+ * @brief Request path discovery for a peer.
+ *
+ * @param public_key Full peer public key.
+ * @param request_tag Optional request correlation tag storage. Pass NULL or a
+ * pointer to zero to let the runtime generate a tag. A non-zero pointed value
+ * is used as the request tag. On success, the actual request tag is written
+ * back to this pointer when provided.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_discover_path_request(const uint8_t *public_key,
+                                        uint32_t *request_tag);
+
+/**
+ * @brief Request trace over an explicit encoded route path.
+ *
+ * @param path Encoded route hash bytes. The caller owns route construction.
+ * @param path_len Number of bytes in @p path.
+ * @param path_hash_size Number of hash bytes per hop in @p path. Values 1..3
+ * are accepted; 3-byte paths are encoded as 2-byte TRACE routes to match the
+ * upstream TRACE wire format.
+ * @param request_tag Optional request correlation tag storage. Pass NULL or a
+ * pointer to zero to let the runtime generate a tag. A non-zero pointed value
+ * is used as the request tag. On success, the actual request tag is written
+ * back to this pointer when provided.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_trace_request(const uint8_t *path, uint8_t path_len,
+                                uint8_t path_hash_size,
+                                uint32_t *request_tag);
+
+/**
+ * @brief Deprecated host-path trace request.
+ *
+ * Host-owned route construction is no longer performed inside lib-meshcore.
+ * Use @ref meshcore_node_trace_request with an explicit route path.
+ *
+ * @return -ENOTSUP.
+ */
+int meshcore_node_trace_path_request(const uint8_t *public_key,
+                                     uint32_t *request_tag);
+
+/**
+ * @brief Request telemetry from a peer.
+ *
+ * @param public_key Full peer public key.
+ * @param permission_mask MeshCore telemetry permission bits. Wire encoding
+ * uses the upstream inverse-mask request byte, @c ~permission_mask.
+ * @param request_tag Optional request correlation tag storage. Pass NULL or a
+ * pointer to zero to let the runtime generate a tag. A non-zero pointed value
+ * is used as the request tag. On success, the actual request tag is written
+ * back to this pointer when provided.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_telemetry_request(const uint8_t *public_key,
+                                    uint8_t permission_mask,
+                                    uint32_t *request_tag);
+
+/**
+ * @brief Request remote binary data.
+ *
+ * The runtime generates a correlation tag.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Request payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_binary_request(const uint8_t *public_key,
+                                 const uint8_t *payload,
+                                 size_t payload_len);
+
+/**
+ * @brief Request remote binary data with an optional correlation tag.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Request payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param tag Caller-provided correlation tag. Zero generates a tag, matching
+ * the reference request path.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_binary_request_with_tag(const uint8_t *public_key,
+                                          const uint8_t *payload,
+                                          size_t payload_len,
+                                          uint32_t tag);
+
+/**
+ * @brief Send anonymous encrypted data to a peer public key.
+ *
+ * Anonymous datagrams include the sender public key in the packet, allowing the
+ * recipient to decrypt with its local private key without a stored peer record.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_anon_data_send(const uint8_t *public_key,
+                                 const uint8_t *payload,
+                                 size_t payload_len);
+
+/**
+ * @brief Send anonymous encrypted data after a radio turn-around delay.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param delay_ms Minimum dispatcher delay before radio transmission.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_anon_data_send_delayed(const uint8_t *public_key,
+                                         const uint8_t *payload,
+                                         size_t payload_len,
+                                         uint32_t delay_ms);
+
+/**
+ * @brief Send anonymous data only when a known direct path exists.
+ *
+ * Unlike @ref meshcore_node_anon_data_send, this operation never falls back
+ * to flooding. Path admission and execution both fail closed with -ENOENT.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @return 0 on success, -ENOENT when no known direct path exists, or another
+ * negative errno-style value.
+ */
+int meshcore_node_anon_data_send_direct(const uint8_t *public_key,
+                                        const uint8_t *payload,
+                                        size_t payload_len);
+
+/**
+ * @brief Send delayed anonymous data with the same no-flood policy.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param delay_ms Minimum dispatcher delay before radio transmission.
+ * @return 0 on success, -ENOENT when no known direct path exists, or another
+ * negative errno-style value.
+ */
+int meshcore_node_anon_data_send_direct_delayed(const uint8_t *public_key,
+                                                const uint8_t *payload,
+                                                size_t payload_len,
+                                                uint32_t delay_ms);
+
+/**
+ * @brief Send anonymous data over a caller-owned explicit direct path.
+ *
+ * This is intended for authenticated, short-lived return routes that are not
+ * part of the host's persistent peer store. A zero-byte path is a valid
+ * verified neighbor route. The runtime never falls back to flooding.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param path Encoded direct-path bytes, or NULL when @p path_byte_len is zero.
+ * @param path_byte_len Number of bytes in @p path. This must not exceed
+ * MESHCORE_MAX_PATH_LEN and must be divisible by @p path_hash_size.
+ * @param path_hash_size Hash width in bytes, from 1 through 3.
+ * @return 0 on success, -EINVAL for an invalid path representation, or another
+ * negative errno-style value.
+ */
+int meshcore_node_anon_data_send_via_path(
+    const uint8_t *public_key, const uint8_t *payload, size_t payload_len,
+    const uint8_t *path, uint8_t path_byte_len, uint8_t path_hash_size);
+
+/**
+ * @brief Send explicit-path anonymous data after a dispatcher delay.
+ *
+ * @param public_key Full peer public key.
+ * @param payload Payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @param path Encoded direct-path bytes, or NULL when @p path_byte_len is zero.
+ * @param path_byte_len Number of bytes in @p path. This must not exceed
+ * MESHCORE_MAX_PATH_LEN and must be divisible by @p path_hash_size.
+ * @param path_hash_size Hash width in bytes, from 1 through 3.
+ * @param delay_ms Minimum dispatcher delay before radio transmission.
+ * @return 0 on success, -EINVAL for an invalid path representation, or another
+ * negative errno-style value.
+ */
+int meshcore_node_anon_data_send_via_path_delayed(
+    const uint8_t *public_key, const uint8_t *payload, size_t payload_len,
+    const uint8_t *path, uint8_t path_byte_len, uint8_t path_hash_size,
+    uint32_t delay_ms);
+
+/**
+ * @brief Send a binary service response for a received binary request.
+ *
+ * @param request Request event previously published by
+ *        meshcore_platform_event_binary_request().
+ * @param payload Response payload bytes.
+ * @param payload_len Number of bytes in @p payload. Flood-routed replies also
+ *        need to fit the request return path, so the accepted payload may be
+ *        smaller than MESHCORE_MAX_SERVICE_RESPONSE_PAYLOAD_LEN.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_binary_response(
+    const meshcore_common_binary_request_event_t *request,
+    const uint8_t *payload, size_t payload_len);
+
+/**
+ * @brief Send a zero-hop node-discover request.
+ *
+ * @param filter Bitmask of @c MESHCORE_NODE_DISCOVER_FILTER_* values.
+ * @param prefix_only true to request 8-byte public-key prefixes; false to
+ * request full public keys from responders.
+ * @param since Minimum responder configuration-modified timestamp. Pass 0 to
+ * accept all matching responders.
+ * @param request_tag Optional request correlation tag storage. Pass NULL or a
+ * pointer to zero to let the runtime generate a tag. A non-zero pointed value
+ * is used as the request tag. On success, the actual request tag is written
+ * back to this pointer when provided.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_node_discover_request(uint8_t filter, bool prefix_only,
+                                   uint32_t since, uint32_t *request_tag);
+
+/**
+ * @brief Send an application raw-custom packet over an encoded path.
+ *
+ * @param path Direct path bytes, or NULL for a zero-hop path.
+ * @param path_len Wire path-length field: upper two bits encode hash width
+ * minus one (width 1-3), lower six bits encode hop count. The buffer contains
+ * width times hop-count bytes, at most MESHCORE_MAX_PATH_LEN. Unknown paths
+ * and the reserved width 4 are rejected; zero hops remains direct.
+ * @param payload Raw-custom payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_raw_data_send(const uint8_t *path, uint8_t path_len,
+                           const uint8_t *payload, size_t payload_len);
+
+/**
+ * @brief Send a zero-hop control packet.
+ *
+ * Payload byte 0 must have bit 7 set.
+ *
+ * @param payload Control payload bytes.
+ * @param payload_len Number of bytes in @p payload.
+ * @return 0 on success, or a negative errno-style value.
+ */
+int meshcore_control_data_send(const uint8_t *payload, size_t payload_len);
+
+/** @} */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* MESHCORE_RUNTIME_H_ */

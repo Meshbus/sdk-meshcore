@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 FoBE Studio
+# SPDX-License-Identifier: Apache-2.0
+tests:
+  lib.meshcore.packet_manager.tdd:
+    tags:
+      - meshcore
+      - packet_manager
+      - ztest
+    harness: ztest
+    platform_allow:
+      - qemu_x86
+      - native_sim
+    integration_platforms:
+      - native_sim

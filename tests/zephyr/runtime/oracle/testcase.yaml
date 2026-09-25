@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 FoBE Studio
+# SPDX-License-Identifier: Apache-2.0
+tests:
+  lib.meshcore.oracle_parity:
+    tags:
+      - meshcore
+      - oracle
+      - parity
+      - ztest
+    harness: ztest
+    platform_allow:
+      - qemu_x86
+      - native_sim
+    integration_platforms:
+      - native_sim

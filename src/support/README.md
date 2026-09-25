@@ -1,0 +1,15 @@
+# MeshCore Support Layer
+
+This directory contains promoted helper and support modules.
+
+Support modules are platform-neutral behavior needed by the generic library,
+but they are not top-level protocol-core translations. Examples include packet
+manager/table helpers, advert application-data helpers, telemetry encoding
+compatibility, and bundled crypto support.
+
+Every support module must remain tied to upstream helper evidence in
+`ARCHITECTURE.md` or `UPSTREAM.md`.
+
+Generic support modules use bounded storage. Process-heap allocation requires
+an explicit allocator contract. Packet queue managers use embedded fixed arenas
+sized by compile-time macros.

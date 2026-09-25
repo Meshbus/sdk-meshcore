@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+# The numeric find_package version selects the upstream baseline only.
+set(meshcore_VERSION_STRING "@MESHCORE_VERSION_STRING@")
+set(meshcore_VERSION_KIND "@MESHCORE_VERSION_KIND@")
+set(meshcore_UPSTREAM_TAG "@MESHCORE_UPSTREAM_TAG@")
+set(meshcore_UPSTREAM_COMMIT "@MESHCORE_UPSTREAM_COMMIT@")
+
+include("${CMAKE_CURRENT_LIST_DIR}/meshcore-targets.cmake")
+check_required_components(meshcore)

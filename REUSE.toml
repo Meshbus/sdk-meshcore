@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 FoBE Studio
+# SPDX-License-Identifier: Apache-2.0
+version = 1
+
+# Ownership of migrated project tests; third-party fixtures use their scoped
+# REUSE.toml and original notices.
+[[annotations]]
+path = [
+    "tests/zephyr/**/testcase.yaml",
+    "tests/zephyr/**/prj.conf",
+    "tests/zephyr/TESTING.md",
+    "tests/zephyr/boundary/platform_contract/CMakeLists.txt",
+    "tests/zephyr/boundary/public_contract/CMakeLists.txt",
+    "tests/zephyr/boundary/public_contract/src/main.cpp",
+    "tests/zephyr/boundary/public_contract/src/public_contract_c.c",
+    "tests/zephyr/common/include/Arduino.h",
+    "tests/zephyr/common/include/Stream.h",
+    "tests/zephyr/common/include/meshcore_reference_preinclude.h",
+    "tests/zephyr/common/include/meshcore_test_runtime.h",
+    "tests/zephyr/protocol/advert_data/CMakeLists.txt",
+    "tests/zephyr/protocol/cayenne_lpp_compat/CMakeLists.txt",
+    "tests/zephyr/protocol/clock/CMakeLists.txt",
+    "tests/zephyr/protocol/dispatcher/CMakeLists.txt",
+    "tests/zephyr/protocol/dispatcher_mesh/CMakeLists.txt",
+    "tests/zephyr/protocol/identity/CMakeLists.txt",
+    "tests/zephyr/protocol/mesh/CMakeLists.txt",
+    "tests/zephyr/protocol/packet/CMakeLists.txt",
+    "tests/zephyr/protocol/packet_manager/CMakeLists.txt",
+    "tests/zephyr/protocol/protocol_api_map.json",
+    "tests/zephyr/protocol/rng/CMakeLists.txt",
+    "tests/zephyr/protocol/tables/CMakeLists.txt",
+    "tests/zephyr/protocol/utils/CMakeLists.txt",
+    "tests/zephyr/runtime/oracle/CMakeLists.txt",
+    "tests/zephyr/runtime/oracle/include/Arduino.h",
+    "tests/zephyr/runtime/oracle/include/meshcore_reference_prefix.h",
+    "tests/zephyr/runtime/oracle/test_cases.md",
+    "tests/zephyr/runtime/requests/CMakeLists.txt",
+    "tests/zephyr/runtime/runtime_api_map.json",
+    "tests/zephyr/runtime/topology/CMakeLists.txt",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "FoBE Studio"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["tests/zephyr/common/lib/ed25519/license.txt"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2015 Orson Peters <orsonpeters@gmail.com>"
+SPDX-License-Identifier = "Zlib"

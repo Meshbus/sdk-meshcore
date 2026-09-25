@@ -1,0 +1,14 @@
+/**
+ * @mainpage MeshCore C Library
+ *
+ * Platform-neutral C protocol/runtime library for a host-owned event pump.
+ *
+ * - @ref meshcore_runtime "Runtime API": lifecycle, requests and radio/timer ingress.
+ * - @ref meshcore_platform "Platform hooks": link-time hooks implemented by the host.
+ * - @ref meshcore_types "Shared types": public limits, types and borrowed views.
+ *
+ * The runtime is singleton, single-threaded and non-reentrant. Platform
+ * callbacks run synchronously; enqueue follow-up work rather than reentering.
+ * See the repository's README and docs/porting.md for complete integration
+ * instructions and host security responsibilities.
+ */

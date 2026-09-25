@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 FoBE Studio
+# SPDX-License-Identifier: Apache-2.0
+tests:
+  lib.meshcore.boundary.public_contract:
+    tags:
+      - meshcore
+      - boundary
+      - public_contract
+      - ztest
+    harness: ztest
+    platform_allow:
+      - qemu_x86
+      - native_sim
+    integration_platforms:
+      - native_sim
+
